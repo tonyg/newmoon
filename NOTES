@@ -10,3 +10,10 @@ bunch of environments in lambdas that are already constructed, and
 stomp on their letrec'd bindings. Nasty. Perhaps Kelsey's CPS/SSA
 technique will help here - a little analysis to identify mutually
 recursive /procedures/ could go a long way.
+
+The Mono "ilasm" and "al" seem crippled compared to the Portable .NET
+versions of the same. Newmoon requires the pnet versions to compile
+properly. (Update: I take that back. Sure, there are features that are
+missing from the Mono versions of the tools, but now I have corrected
+the syntax of my generated IL (oops!), the Mono ilasm seems to be
+quite happy.)
