@@ -316,7 +316,7 @@
    ((null? lst) #f)
    ((eq? (car lst) key) lst)
    (else
-    (member key (cdr lst)))))
+    (memq key (cdr lst)))))
 
 (define (reverse lst)
   (let loop ((acc '()) (lst lst))
@@ -432,7 +432,7 @@
 (define-syntax receive
   (syntax-rules ()
     ((_ (var ...) expr body ...)
-     (call-with-values expr
+     (call-with-values (lambda () expr)
        (lambda (var ...)
 	 body ...)))))
 
