@@ -11,6 +11,7 @@
 	 (lib "9.ss" "srfi")
 	 (lib "pretty.ss")
 	 (lib "defmacro.ss")
+	 (lib "process.ss")
 	 (lib "etc.ss"))
 
 (define-syntax include
@@ -89,3 +90,6 @@
 ; 	   (list (reverse (compiler$visit-time)) sil) o))))))
 
 ;;(load "tests/test-cases.scm")
+
+(define (call-external-program program . args)
+  (apply system* program args))

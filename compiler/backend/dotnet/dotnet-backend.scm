@@ -14,6 +14,7 @@
     (methdef (methdef (name id)
 		      (virtual ,boolean?)
 		      (static ,boolean?)
+		      (entrypoint ,boolean?)
 		      (rettype type)
 		      (formals (%list-of vardef))
 		      (locals (%list-of vardef))
@@ -43,6 +44,9 @@
 (define *il-reply-varargs-method* "object class [Newmoon]Newmoon.Continuation::ReplyVarargs(class [Newmoon]Newmoon.Module, object[])")
 (define *il-apply-varargs-method* "object class [Newmoon]Newmoon.Closure::ApplyVarargs(class [Newmoon]Newmoon.Module, class [Newmoon]Newmoon.Continuation, object[])")
 (define *il-lookup-global-method* "class [Newmoon]Newmoon.Cell class [Newmoon]Newmoon.Module::LookupGlobalBinding(string)")
+
+(define *il-get-type-from-handle-method* "void [mscorlib]System.Type::GetTypeFromHandle(class [mscorlib]System.RuntimeTypeHandle)")
+(define *il-program-entry-point-method* "void [Newmoon]Newmoon.Driver::ProgramEntryPoint(string[], class [mscorlib]System.Type)")
 
 (define (make-counter receiver)
   (let ((counter 0))
@@ -87,6 +91,7 @@
 			    'name name
 			    'virtual virtual
 			    'static static
+			    'entrypoint #f
 			    'rettype rettype
 			    'formals (map (lambda (entry)
 					    (make-node 'vardef
@@ -158,6 +163,8 @@
 	  " "(node-get methdef 'methdef 'name))
     (emit-vardefs port (node-get methdef 'methdef 'formals))
     (emit port "\n"#\tab"cil managed\n"#\tab"{\n")
+    (if (node-get methdef 'methdef 'entrypoint)
+	(emit port #\tab #\tab ".entrypoint\n"))
     (let ((locals (node-get methdef 'methdef 'locals)))
       (if (not (null? locals))
 	  (begin
@@ -439,7 +446,7 @@
 			   (throw))))
 	  (let ((applyn (classdef-add-method! classdef
 					      "Body"
-					      #t #f "object"
+					      #f #f "object"
 					      (body-argdefs-from is-continuation
 								 (formals->argdefs formals)))))
 	    (gen-boxing-actions applyn)
@@ -738,9 +745,22 @@
 	(gen-node entry statics-classname '() node)
 	(add-instr! entry '(ret))))
 
+    (define (gen-program-entry-point)
+      (let ((entry (classdef-add-method! statics-classdef "Main" #f #t "void"
+					 `((argv "string[]")))))
+	(node-set! entry 'methdef 'entrypoint #t)
+	(add-instrs! entry `((ldarg argv)
+			     (ldtoken ,statics-classname)
+			     (call ,*il-get-type-from-handle-method*)
+			     (call ,*il-program-entry-point-method*)
+			     (ret)))))
+
     ;;---------------------------------------------------------------------------
     (for-each display (list ";; dotnet backend compiling to namespace "fq-namespace"\n"))
     (gen-module-entry-point frontend-result)
+
+    (if (compiler$make-program)
+	(gen-program-entry-point))
 
     (for-each display (list ";; dotnet backend generating "output-filename"\n"))
     (delete-file-if-exists output-filename)
@@ -749,4 +769,16 @@
 	(il-file-prologue o (mangle-id assembly-name))
 	(emit o ".namespace "fq-namespace"\n{\n\n")
 	(for-each (emit-classdef o) all-classdefs)
-	(emit o "\n} // namespace "fq-namespace"\n")))))
+	(emit o "\n} // namespace "fq-namespace"\n")))
+
+    (for-each display (list ";; dotnet backend assembling "output-filename
+			    (if (compiler$make-program)
+				" to executable\n"
+				" to library\n")))
+    (if (not (call-external-program (or (getenv "NEWMOON_ILASM")
+					(error
+					 "The environment variable NEWMOON_ILASM is not set"))
+				    (if (compiler$make-program) "/exe" "/dll")
+				    output-filename))
+	(error "Call to external assembler failed - is $NEWMOON_ILASM correct?"))
+    ))

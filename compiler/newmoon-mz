@@ -18,6 +18,8 @@
 	  ((#\p) (main$libpath (cons (car rest) (main$libpath))) (cdr rest))
 	  ((#\b) (compiler$without-basic-libraries #t) rest)
 	  ((#\B) (compiler$without-basic-libraries #f) rest)
+	  ((#\x) (compiler$make-program #t) rest)
+	  ((#\X) (compiler$make-program #f) rest)
 	  ((#\i) (set! interactive #t) rest)
 	  ((#\e) (set! mode 'evaluating) rest)
 	  (else

@@ -28,6 +28,7 @@
 (define main$debug (make-parameter #f))
 (define main$libpath (make-parameter (list "../lib")))
 (define compiler$without-basic-libraries (make-parameter #t))
+(define compiler$make-program (make-parameter #f))
 
 (define (replace-filename-extension filename new-extension)
   (cond
