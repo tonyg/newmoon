@@ -144,7 +144,18 @@
 			       (evaluate-chain args env boxing-actions)
 			       (body-closure args env))))))))
 		((cps-asm formals actuals code)
-		 (error "cps-asm illegal in core-scheme-eval" node))
+		 (cond
+		  ((find (lambda (clause) (eq? 'scheme (node-get clause 'backend-asm 'name))) code)
+		   => (lambda (clause)
+			(let* ((code-expr `(lambda ,formals
+					     ,@(node-get clause 'backend-asm 'code)))
+			       (code-proc (eval code-expr)) ;; !
+			       (actual-thunks (map walk actuals)))
+			  (lambda (args env)
+			    (apply code-proc
+				   (map (lambda (t) (t args env)) actual-thunks))))))
+		  (else
+		   (error "cps-asm missing scheme clause" node))))
 		((cps-local-set name arginfo location expr)
 		 (make-mutator #t
 			       arginfo

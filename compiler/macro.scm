@@ -40,6 +40,11 @@
 			(make-lit kind)
 			transformer)))
 
+    (define (parse-backend-asm clause)
+      (make-node 'backend-asm
+		 'name (car clause)
+		 'code (cdr clause)))
+
     (lambda (expr)
       (let expand/scope ((scope '()) (expr expr))
 
@@ -88,7 +93,7 @@
 	      ((%assemble)	(make-node 'asm
 					   'formals (cadr expr)
 					   'actuals (map expand (caddr expr))
-					   'code (cdddr expr)))
+					   'code (map parse-backend-asm (cdddr expr))))
 	      ((define)		(if (pair? (cadr expr))
 				    (make-node 'define
 					       'name (caadr expr)

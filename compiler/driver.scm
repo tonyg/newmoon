@@ -5,8 +5,7 @@
     (scheme
      #t)
 
-    (assembly (%list-of assembly-instruction))
-    (assembly-instruction #t)
+    (assembly (%list-of (backend-asm (name ,symbol?) (code #t))))
 
     (arginfo
      (arginfo (name ,symbol?) (captured ,boolean?) (mutated ,boolean?) (is-rest ,boolean?)))
