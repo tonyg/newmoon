@@ -36,9 +36,9 @@
 (define *il-pair-ctor* "instance void [Newmoon]Newmoon.Pair::.ctor(object, object)")
 (define *il-cell-ctor* "instance void [Newmoon]Newmoon.Cell::.ctor(object)")
 
-(define *il-undefined-field* "[Newmoon]Newmoon.Undefined [Newmoon]Newmoon.Undefined::UNDEFINED")
-(define *il-null-field* "[Newmoon]Newmoon.Null [Newmoon]Newmoon.Null::NULL")
-(define *il-cell-value-field* "object [Newmoon]Newmoon.Cell::value")
+(define *il-undefined-field* "class [Newmoon]Newmoon.Undefined [Newmoon]Newmoon.Undefined::UNDEFINED")
+(define *il-null-field* "class [Newmoon]Newmoon.Null [Newmoon]Newmoon.Null::NULL")
+(define *il-cell-value-field* "object [Newmoon]Newmoon.Cell::'value'")
 
 (define *il-reply-varargs-method* "object class [Newmoon]Newmoon.Continuation::ReplyVarargs(class [Newmoon]Newmoon.Module, object[])")
 (define *il-apply-varargs-method* "object class [Newmoon]Newmoon.Closure::ApplyVarargs(class [Newmoon]Newmoon.Module, class [Newmoon]Newmoon.Continuation, object[])")
@@ -386,7 +386,7 @@
 			   (stloc restarg)
 			   (ldarg args)
 			   (ldlen)
-			   (ldc.i1 1)
+			   (ldc.i4 1)
 			   (sub)
 			   (stloc counter)
 
@@ -470,7 +470,7 @@
 					    (ldarg ,(capture-source-arg-for-index index))
 					    (stfld ,(string-append
 						     (if cap-cont *il-cont-type* "object")
-						     lambdatype"::"
+						     " "lambdatype"::"
 						     (capture-index->name index capture-map)))))))
 		    captures)
 	  (add-instr! ctor '(ret)))
@@ -584,7 +584,7 @@
 			       (arginfo (node-get capture 'capture 'arginfo)))
 			  (gen-local-load arginfo old-loc)))
 		      captures)
-	    (add-instr! methdef `(newobj ,ctor-token))
+	    (add-instr! methdef `(newobj "instance void" ,ctor-token))
 	    (gen-linkage/value want-value))))
 
       (define (gen-asm want-value formals actuals code)
