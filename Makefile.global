@@ -32,19 +32,10 @@ endif
 
 _clean::
 	rm -f $(TARGETS) $(JUNK)
-	rm -f *.scm.sil
 
-%.dll: %.scm
+%.class: %.scm
 ifdef DEV_TREE
 	$(DEV_TREE)/compiler/compile1 $<
-else
-	@echo 'Variable $$DEV_TREE not set.'
-	false
-endif
-
-%.exe: %.scm
-ifdef DEV_TREE
-	SIL_FLAGS="$$SIL_FLAGS -x" $(DEV_TREE)/compiler/compile1 $<
 else
 	@echo 'Variable $$DEV_TREE not set.'
 	false

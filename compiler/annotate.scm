@@ -21,10 +21,10 @@
 (define (find-location require-global-entry? lambda-stack varname)
   (if (null? lambda-stack)
       varname
-      (let* ((lambda-node (car lambda-stack))
+      (let* ((lambda-node (caar lambda-stack))
+	     (args (cdar lambda-stack))
 	     (old-captures (or (node-get-or-false lambda-node 'captures) '()))
-	     (old-globals (or (node-get-or-false lambda-node 'globals) '()))
-	     (args (node-get lambda-node 'lambda 'args)))
+	     (old-globals (or (node-get-or-false lambda-node 'globals) '())))
 	(cond
 
 	 ((assoc-arginfo varname old-captures) =>
@@ -41,11 +41,11 @@
 	  varname)
 
 	 ((member-arginfo varname args) =>
-	  ;; This lambda defines this variable! Return the negative
-	  ;; of the ONE-based index of the argument in our argument
-	  ;; list, as well as the arginfo structure for the
-	  ;; argument, so that we can later update it with
-	  ;; capture/mutation information.
+	  ;; This branch of this case-lambda defines this variable!
+	  ;; Return the negative of the ONE-based index of the
+	  ;; argument in our argument list, as well as the arginfo
+	  ;; structure for the argument, so that we can later update
+	  ;; it with capture/mutation information.
 	  (lambda (member-tail)
 	    (let ((position (- (length args)
 			       (length member-tail))))
@@ -75,6 +75,10 @@
 				 (cons varname old-globals)))
 		  varname))))))))
 
+(define (annotate-children lambda-stack node)
+  (for-each (lambda (n) (annotate-env lambda-stack n))
+	    (node-collect-subnodes node (node-child-attr-names node))))
+
 (define (annotate-env lambda-stack node)
   (let ((kind-of-node (node-kind node)))
     (if (memq kind-of-node '(var set))
@@ -89,8 +93,9 @@
 		(node-set! node kind-of-node 'location location)
 		(node-set! node kind-of-node 'arginfo arginfo))
 	      (node-set! node kind-of-node 'location location))))
-    (let ((new-lambda-stack (if (eq? kind-of-node 'lambda)
-				(cons node lambda-stack)
-				lambda-stack)))
-      (for-each (lambda (n) (annotate-env new-lambda-stack n))
-		(node-collect-subnodes node (node-child-attr-names node))))))
+    (if (eq? kind-of-node 'lambda)
+	(for-each (lambda (arginfos body)
+		    (annotate-env (cons (cons node arginfos) lambda-stack) body))
+		  (node-get node 'lambda 'all-arginfos)
+		  (node-get node 'lambda 'all-bodies))
+	(annotate-children lambda-stack node))))

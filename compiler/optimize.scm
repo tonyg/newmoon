@@ -5,16 +5,19 @@
   (node-tree-map! (lambda (node)
 		    (node-match node
 				((apply rator rands)
-				 (node-match rator
-					     ((lambda args body)
-					      (if (and (null? rands)
-						       (null? args))
-						  body
-						  node))
-					     (else
-					      node)))
-				(else
-				 node)))
+				 (if (null? rands)
+				     (node-match rator
+						 ((lambda all-arginfos all-bodies)
+						  (let loop ((all-arginfos all-arginfos)
+							     (all-bodies all-bodies))
+						    (cond
+						     ((null? all-arginfos) node)
+						     ((null? (car all-arginfos)) (car all-bodies))
+						     (else (loop (cdr all-arginfos)
+								 (cdr all-bodies))))))
+						 (else node))
+				     node))
+				(else node)))
 		  ast))
 
 (define (remove-begin-head-noops ast)
@@ -26,7 +29,7 @@
 				   ((begin) (compiler-assert
 					     begin-should-never-be-head-of-itself
 					     #f))
-				   ((apply if set extern-apply) node)
+				   ((apply if set jvm-assemble) node)
 				   (else
 				    (for-each display
 					      (list ";; Warning: unknown node-type in "

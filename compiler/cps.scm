@@ -5,14 +5,14 @@
 				((apply) '(rator . rands))
 				((if) '(test))
 				((set) '(value))
-				((extern-apply) 'rands)
+				((jvm-assemble) 'actuals)
 				(else (error "internal-compiler-error"
 					     "unknown node kind in head-exprs:"
 					     expr)))))
 
 (define (tail-exprs expr)
   (node-collect-subnodes expr (case (node-kind expr)
-				((lit singleton var lambda apply set extern-apply) '())
+				((lit singleton var lambda apply set jvm-assemble) '())
 				((begin) '(tail))
 				((if) '(true false))
 				(else (error "internal-compiler-error"
@@ -64,6 +64,12 @@
 (define (gen-cont-sym) (gensym "CONT"))
 (define (gen-val-sym) (gensym "VAL"))
 
+(define (make-one-armed-lambda argsyms bodynode)
+  (let ((arginfos (map (lambda (argsym) (make-arginfo argsym #f)) argsyms)))
+    (make-lambda (list arginfos)
+		 (list #f)
+		 (list bodynode))))
+
 (define (cps-pushing-transform cont-arg node)
   (cond
    ((simple? node)
@@ -84,13 +90,11 @@
 		     (if (eq? ie node)	; if node is its own init-expr
 			 (make-call-cps (make-var cont-arg #f))
 			 (make-call-cps (let ((cont-val (gen-val-sym)))
-					  (make-lambda (list (make-arginfo cont-val))
-						       (cps-pushing-transform
-							cont-arg
-							(subst-expr node
-								    ie
-								    (make-var cont-val
-									      #f)))))))))
+					  (make-one-armed-lambda
+					   (list cont-val)
+					   (cps-pushing-transform
+					    cont-arg
+					    (subst-expr node ie (make-var cont-val #f)))))))))
 		  ((if test true false)
 		   (let ((make-cps-if (lambda (the-cont-var)
 					(make-if (cps-transform test)
@@ -100,31 +104,30 @@
 			 (make-cps-if cont-arg)
 			 (let ((the-cont-var (gen-cont-sym))
 			       (the-cont-arg (gen-val-sym)))
-			   (make-apply (make-lambda (list (make-arginfo the-cont-var))
-						    (make-cps-if the-cont-var))
-				       (list (make-lambda (list (make-arginfo the-cont-arg))
-							  (cps-pushing-transform
-							   cont-arg
-							   (subst-expr node
-								       ie
-								       (make-var the-cont-arg
-										 #f))))))))))
-		  ((extern-apply name detail rands)
-		   (compiler-assert extern-apply-is-always-its-own-head-expr (eq? ie node))
-		   (make-extern-apply name
-				      detail
-				      (map cps-transform rands)))
+			   (make-apply (make-one-armed-lambda (list the-cont-var)
+							      (make-cps-if the-cont-var))
+				       (list (make-one-armed-lambda
+					      (list the-cont-arg)
+					      (cps-pushing-transform
+					       cont-arg
+					       (subst-expr node
+							   ie
+							   (make-var the-cont-arg #f))))))))))
+		  ((jvm-assemble formals actuals code)
+		   (compiler-assert jvm-assemble-is-always-its-own-head-expr (eq? ie node))
+		   (make-jvm-assemble formals
+				      (map cps-transform actuals)
+				      code))
 		  (else
 		   (error "internal-compiler-error"
 			  "invalid initial-expression node-kind; node =" node)))))))
 
-
 (define (cps-transform node)
   (node-match node
-	      ((lambda args body)
+	      ((lambda all-arginfos all-bodies)
 	       (let ((cont-arg (gen-cont-sym)))
-		 (node-set! node 'lambda 'args (cons (make-arginfo cont-arg) args))
-		 (node-set! node 'lambda 'body (cps-pushing-transform cont-arg body))))
+		 (map! (lambda (arginfos) (cons (make-arginfo cont-arg #f) arginfos)) all-arginfos)
+		 (map! (lambda (body) (cps-pushing-transform cont-arg body)) all-bodies)))
 	      (else
 	       (for-each cps-transform
 			 (node-collect-subnodes node (node-child-attr-names node)))))

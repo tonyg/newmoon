@@ -26,11 +26,14 @@
 (define (compiler-front-end-phases expr)
   (sequence-phases
    expr
-   `(("macro-expansion"				,sc-expand)
+   `(("syntax-case expansion"			,sc-expand)
+;;     ("macro-expansion"				,macro-expand)
 ;;     ("dump"					,(lambda (x) (pretty-print x) (newline) x))
      ("toplevel begin-flattening"		,flatten-toplevel-begins)
      ("toplevel-rewriting"			,rewrite-toplevel-defines)
-     ("parsing"					,(lambda (x) (make-lambda '() (parse '() x))))
+     ("parsing"					,(lambda (x) (make-lambda (list '())
+									  (list #f)
+									  (list (parse '() x)))))
      ("optimisation(1) removing head thunks"	,remove-thunk-in-head-position)
      ("cps-transform"				,cps-transform)
      ("optimisation(2) removing noop begins"	,remove-begin-head-noops)

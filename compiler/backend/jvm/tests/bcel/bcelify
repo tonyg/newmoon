@@ -1,0 +1,1 @@
+java -cp "`dirname "$0"`"/../../bcel-5.1.jar org.apache.bcel.util.BCELifier "$@"

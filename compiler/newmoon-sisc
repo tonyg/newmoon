@@ -1,0 +1,59 @@
+"true" "-*- scheme -*-";CLASSPATH="`dirname "$0"`"/backend/jvm/bcel-5.1.jar:"`dirname "$0"`"/backend/jvm/sisc-newmoon.jar exec env sisc --no-repl --call-with-args newmoon-main "$0" -- "$@"
+
+(case-sensitive #t)
+(emit-annotations #t)
+(emit-debugging-symbols #t)
+(repl-prompt ">>> ")
+(stack-trace-on-error #t)
+
+(load "support/sisc.scm")
+(load "main.scm")
+(load "backend/jvm/jvm-backend.scm")
+
+(define (newmoon-main . args)
+  (define interactive #f)
+
+  (define (process-argument arg rest)
+    (if (< (string-length arg) 2)
+	(error "Command-line switches look like '-x' where is the switch identifier.")
+	(case (string-ref arg 1)
+	  ((#\d) (main$debug #t) rest)
+	  ((#\D) (main$debug #f) rest)
+	  ((#\p) (main$libpath (cons (car rest) (main$libpath))) (cdr rest))
+	  ((#\b) (compiler$without-basic-libraries #t) rest)
+	  ((#\B) (compiler$without-basic-libraries #f) rest)
+	  ((#\i) (set! interactive #t) rest)
+	  (else
+	   (error "Unknown command-line switch" arg)))))
+
+  (define (interactive-main)
+    (display "newmoon> ")
+    (let ((expr (read)))
+      (if (eof-object? expr)
+	  'done!
+	  (cond
+	   ((string? expr)
+	    (compile-file expr)
+	    (interactive-main))
+	   (else (case expr
+		   (else (for-each display (list "Newmoon interactive mode." #\newline
+						 "Type 'help' for help." #\newline
+						 #\newline
+						 "  \"filename.scm\" - compile that file" #\newline
+						 #\newline))
+			 (interactive-main))))))))
+
+  (let loop ((args args))
+    (cond
+     ((not (null? args)) (let ((arg (car args))
+			       (rest (cdr args)))
+			   (case (string-ref arg 0)
+			     ((#\-)
+			      (loop (process-argument arg rest)))
+			     (else
+			      (compile-file arg)
+			      (loop rest)))))
+     (interactive (interactive-main))
+     (else
+      (display ";; finished.")
+      (newline)))))

@@ -1,0 +1,16 @@
+Possible backend designs.
+
+1. trampolining, allocate closures as objects, argvecs are vectors
+
+	- safe for space
+	- slow!
+	- totally typeless
+	- dynamic-wind layered atop
+
+2. general tco by frame counting + exception; regular calling otherwise
+   with continuation capture by exception
+
+	- possibly slow because of the exception-handlers
+	- safe for space recoverable only by mutation of dead bindings
+	  to null
+	- dynamic-wind integrable?

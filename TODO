@@ -1,0 +1,11 @@
+- case-lambda
+- nary primitives
+- make jvm-assemble hand out named local slots
+
+- srfi-9 based around real classes
+- serialization of compiled code and classes
+- r5rs library as compiled code
+- Flatt's module system
+
+- more efficient representation of globals (some kind of Binding
+  structure? or simply a Box?)

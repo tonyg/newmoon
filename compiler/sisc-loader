@@ -1,0 +1,1 @@
+CLASSPATH="`dirname "$0"`"/backend/jvm/bcel-5.1.jar:"`dirname "$0"`"/backend/jvm/sisc-newmoon.jar sisc "`dirname "$0"`"/newmoon-sisc

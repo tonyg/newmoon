@@ -1,0 +1,72 @@
+Hi all.
+
+I've been working on a simple Scheme compiler for a while now. Until
+recently I was targeting .NET, but I'm now switching over to the
+JVM. I've been thinking about how I might integrate the compiled code
+with SISC, to take advantage of the more-or-less complete runtime and
+make use of parts of the design (such as serialisation).
+
+The compiler supports proper tail-calls, and uses CPS as its internal
+representation for continuations-as-cheap-as-closures. The few simple
+benchmarks I've done show the following setup performing reasonably
+well, given the constraints (I've removed some irrelevant detail):
+
+    public abstract class Closure {
+	public abstract void apply_compiled(Object[] args, Trampoline next);
+    }
+
+    public class Trampoline {
+	public Closure closure;
+	public Object[] args;
+
+	public Object call(Closure closure, Object[] args) {
+	    this.closure = closure;
+	    this.args = new Object[args.length + 2];
+
+	    this.args[0] = new ToplevelContinuation();
+	    System.arraycopy(args, 0, this.args, 1, args.length);
+
+	    while (this.closure != null) {
+		this.closure.apply_compiled(this.args, this);
+	    }
+
+	    return this.args[0];
+	}
+
+	public class ToplevelContinuation extends Closure {
+	    public void apply_compiled(Object[] args, Trampoline next) {
+		next.args = new Object[] { args[0] };
+		next.closure = null;
+	    }
+	}
+    }
+
+This is close to being, but not quite the same as, the calling
+convention used in SISC at the moment. The simplest means of
+integrating the two evaluation styles could be:
+
+    - extend class Value with
+      public void apply_compiled(Value[] args, Interpreter r)
+      which expects a continuation as args[0].
+
+    - implement some class CompiledProcedure extends Procedure, with
+      an apply(Interpreter) method similar to Trampoline.call above,
+      setting things up for a call to apply_compiled, except instead
+      of putting in a new ToplevelContinuation, the current
+      continuation from the Interpreter would be capture()d and passed
+      along.
+
+    - class Procedure would override apply_compiled, doing the
+      inverse: setting up r.nxp and r.vlr etc etc. for a call to
+      apply(), and pushing the continuation in args[0] onto the
+      interpreter's context.
+
+This way, calls back and forth between compiled and interpreted
+procedures is reasonably transparent, and continuation capture Just
+Works for both halves.
+
+I'd appreciate feedback on this general outline. Am I missing anything
+important? Is there any way this design could be improved upon?
+
+Regards,
+  Tony

@@ -7,327 +7,122 @@
 ; Note that sys$install-binding is inserted by the compiler as a
 ; primitive!
 
-(sys$install-binding '#%define-global-variable 'global
-		     (lambda (name val)
-		       (sys$install-binding name 'global val)))
+(sys$install-binding '%define-global-variable 'global
+		     (lambda (name value)
+		       (sys$install-binding name 'global value)))
 
-(sys$install-binding '$sc-put-cte 'global
-		     (lambda args
-		       '$sc-put-cte-ignored))
+(sys$install-binding '%define-macro-transformer 'global
+		     (lambda (name kind transformer)
+		       (sys$install-binding name 'macro (cons kind transformer))))
 
-(define-syntax require
-  (lambda (x)
-    (syntax-case x (lib)
-      ((_)
-       #'(quote empty-require-spec-list))
+(define (null? x)
+  (%jvm-assemble (x) (x)
+    ($ x)
+    (getstatic "sisc.data.EmptyList" "EMPTYLIST" "sisc.data.EmptyList")
+    (obj-cond eq ldtrue)
+    (getstatic "sisc.data.SchemeBoolean" "FALSE" "sisc.data.SchemeBoolean")
+    (goto done)
+    ldtrue
+    (getstatic "sisc.data.SchemeBoolean" "TRUE" "sisc.data.SchemeBoolean")
+    done))
 
-      ((_ filename more ...)
-       (string? (syntax-object->datum #'filename))
-       (begin
-	 (visit (syntax-object->datum #'filename))
-	 #'(begin
-	     (load filename)
-	     (require more ...))))
+(define (pair? x)
+  (%jvm-assemble (x) (x)
+    ($ x)
+    (instanceof "sisc.data.Pair")
+    (int-cond !=0 ldtrue)
+    (getstatic "sisc.data.SchemeBoolean" "FALSE" "sisc.data.SchemeBoolean")
+    (goto done)
+    ldtrue
+    (getstatic "sisc.data.SchemeBoolean" "TRUE" "sisc.data.SchemeBoolean")
+    done))
 
-      ((_ (lib filename collect ...) more ...)
-       (andmap string? (syntax-object->datum #'(filename collect ...)))
-       (begin
-	 (visit (resolve-library-path (syntax-object->datum #'filename)
-				      (syntax-object->datum #'(collect ...))))
-	 #'(begin
-	     (load (resolve-library-path filename '(collect ...)))
-	     (require more ...)))))))
+(define (cons a d)
+  (%jvm-assemble (a d) (a d)
+    (new "sisc.data.Pair")
+    (dup 1)
+    ($ a)
+    ($ d)
+    (invoke "sisc.data.Pair" "<init>" void (object object) special)))
 
-(define-syntax require-for-syntax
-  (lambda (x)
-    (syntax-case x (lib)
-      ((_)
-       #'(quote empty-require-for-syntax-spec-list))
+(define (car x)
+  (%jvm-assemble (x) (x)
+    ($ x)
+    (check-cast "sisc.data.Pair")
+    (getfield "sisc.data.Pair" "car" object)))
+  
+(define (cdr x)
+  (%jvm-assemble (x) (x)
+    ($ x)
+    (check-cast "sisc.data.Pair")
+    (getfield "sisc.data.Pair" "cdr" object)))
 
-      ((_ filename more ...)
-       (string? (syntax-object->datum #'filename))
-       (begin
-	 (visit (syntax-object->datum #'filename))
-	 (load (syntax-object->datum #'filename))
-	 #'(begin
-	     (quote (required-for-syntax filename))
-	     (require-for-syntax more ...))))
+(define (vector? x)
+  (%jvm-assemble (x) (x)
+    ($ x)
+    (instanceof "sisc.data.SchemeVector")
+    (int-cond !=0 ldtrue)
+    (getstatic "sisc.data.SchemeBoolean" "FALSE" "sisc.data.SchemeBoolean")
+    (goto done)
+    ldtrue
+    (getstatic "sisc.data.SchemeBoolean" "TRUE" "sisc.data.SchemeBoolean")
+    done))
 
-      ((_ (lib filename collect ...) more ...)
-       (andmap string? (syntax-object->datum #'(filename collect ...)))
-       (let ((path (resolve-library-path (syntax-object->datum #'filename)
-					 (syntax-object->datum #'(collect ...)))))
-	 (visit path)
-	 (load path)
-	 #'(begin
-	     (quote (required-for-syntax (lib filename collect ...)))
-	     (require-for-syntax more ...)))))))
+(define (symbol? x)
+  (%jvm-assemble (x) (x)
+    ($ x)
+    (instanceof "sisc.data.SchemeString")
+    (int-cond !=0 ldtrue)
+    (getstatic "sisc.data.SchemeBoolean" "FALSE" "sisc.data.SchemeBoolean")
+    (goto done)
+    ldtrue
+    (getstatic "sisc.data.SchemeBoolean" "TRUE" "sisc.data.SchemeBoolean")
+    done))
 
-;;
-;; (primitive-syntax name (kind detail ...) ...)
-;;
-(define-syntax primitive-syntax
-  (lambda (x)
-    (define (build-clause name clause)
-      (with-syntax ((name name)
-		    (length (datum->syntax-object (syntax here) 'length)))
-	(syntax-case clause (type-predicate
-			     specific-static generic-static varargs-static
-			     specific-constructor generic-constructor closure-constructor
-			     specific-property-reader specific-property-writer
-			     generic-property-reader generic-property-writer
-			     specific-method overloaded-method generic-method
-			     assembler
-			     static-variable)
-	  ((type-predicate typename)
-	   (syntax
-	    ((_ actual)
-	     (syntax (#%extern-apply 'name
-				     '(type-predicate () name (typename))
-				     actual)))))
+(define (eq? x y)
+  (%jvm-assemble (x y) (x y)
+    ($ x)
+    ($ y)
+    (obj-cond eq eq-true)
+    (getstatic "sisc.data.SchemeBoolean" "FALSE" "sisc.data.SchemeBoolean")
+    (goto eq-done)
+    eq-true
+    (getstatic "sisc.data.SchemeBoolean" "TRUE" "sisc.data.SchemeBoolean")
+    eq-done))
 
-	  ((specific-static typename methodname argtype ...)
-	   (with-syntax (((actual ...) (generate-temporaries (syntax (argtype ...)))))
-	     (syntax
-	      ((_ actual ...)
-	       (syntax (#%extern-apply 'name
-				       '(specific-static () name (typename methodname argtype ...))
-				       actual ...))))))
+(define (= x y)
+  (%jvm-assemble (x y) (x y)
+    ($ x)
+    (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
+    ($ y)
+    (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
+    (const 0)
+    (invoke "sisc.data.Quantity" "comp" boolean ("sisc.data.Quantity" int) virtual)
+    (invoke "sisc.util.Util" "truth" "sisc.data.SchemeBoolean" (boolean) static)))
 
-	  ((generic-static typename methodname)
-	   (syntax
-	    ((_ actual (... ...))
-	     (syntax (#%extern-apply 'name
-				     '(generic-static () name (typename methodname))
-				     actual (... ...))))))
+(define (> x y)
+  (%jvm-assemble (x y) (x y)
+    ($ x)
+    (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
+    ($ y)
+    (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
+    (const 1)
+    (invoke "sisc.data.Quantity" "comp" boolean ("sisc.data.Quantity" int) virtual)
+    (invoke "sisc.util.Util" "truth" "sisc.data.SchemeBoolean" (boolean) static)))
 
-	  ((varargs-static typename methodname)
-	   (syntax
-	    ((_ actual (... ...))
-	     (syntax (#%extern-apply 'name
-				     '(varargs-static () name (typename methodname))
-				     actual (... ...))))))
+(define (+ x y)
+  (%jvm-assemble (x y) (x y)
+    ($ x)
+    (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
+    ($ y)
+    (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
+    (invoke "sisc.data.Quantity" "add" "sisc.data.Quantity" ("sisc.data.Quantity") virtual)))
 
-	  ((specific-constructor typename argtype ...)
-	   (with-syntax (((actual ...) (generate-temporaries (syntax (argtype ...)))))
-	     (syntax
-	      ((_ actual ...)
-	       (syntax (#%extern-apply 'name
-				       '(specific-constructor () name (typename argtype ...))
-				       actual ...))))))
-
-	  ((generic-constructor typename)
-	   (syntax
-	    ((_ actual (... ...))
-	     (syntax (#%extern-apply 'name
-				     '(generic-constructor () name (typename))
-				     actual (... ...))))))
-
-	  ((closure-constructor typename argtype ...)
-	   (with-syntax (((actual ...) (generate-temporaries (syntax (argtype ...)))))
-	     (syntax
-	      ((_ actual ...)
-	       (syntax (#%extern-apply 'name
-				       '(closure-constructor () name (typename argtype ...))
-				       actual ...))))))
-
-	  ((specific-method typename methodname argtype ...)
-	   (with-syntax (((actual ...) (generate-temporaries (syntax (receiver argtype ...)))))
-	     (syntax
-	      ((_ actual ...)
-	       (syntax (#%extern-apply 'name
-				       '(specific-method () name (typename methodname argtype ...))
-				       actual ...))))))
-
-	  ((overloaded-method typename methodname)
-	   (syntax
-	    ((_ receiver actual (... ...))
-	     (syntax (#%extern-apply 'name
-				     '(overloaded-method () name (typename methodname))
-				     receiver actual (... ...))))))
-
-	  ((generic-method methodname)
-	   (syntax
-	    ((_ receiver actual (... ...))
-	     (syntax (#%extern-apply 'name
-				     '(generic-method () name (methodname))
-				     receiver actual (... ...))))))
-
-	  ((assembler typename)
-	   (syntax
-	    ((_ actual (... ...))
-	     (syntax (#%extern-apply 'name
-				     '(assembler () name (typename))
-				     actual (... ...))))))
-
-	  ((specific-property-reader typename propname argtype ...)
-	   (with-syntax (((actual ...) (generate-temporaries (syntax (receiver argtype ...)))))
-	     (syntax
-	      ((_ actual ...)
-	       (syntax (#%extern-apply 'name
-				       '(specific-property (reader) name
-							   (typename propname argtype ...))
-				       actual ...))))))
-
-	  ((specific-property-writer typename propname argtype ...)
-	   (with-syntax (((actual ...)
-			  ;; Note that newval here is in the wrong position -
-			  ;; it should be last. It has been moved because generate-temporaries
-			  ;; needs a proper list and doesn't support the psyntax extension
-			  ;; of being able to say (x ... y).
-			  (generate-temporaries (syntax (receiver newval argtype ...)))))
-	     (syntax
-	      ((_ actual ...)
-	       (syntax (#%extern-apply 'name
-				       '(specific-property (writer) name
-							   (typename propname argtype ...))
-				       actual ...))))))
-
-	  ((generic-property-reader typename propname)
-	   (syntax
-	    ((_ receiver actual (... ...))
-	     (syntax (#%extern-apply 'name
-				     '(generic-property (reader) name (typename propname))
-				     receiver actual (... ...))))))
-
-	  ((generic-property-writer typename propname)
-	   (syntax
-	    ((_ receiver actual (... ...) newval)
-	     (syntax (#%extern-apply 'name
-				     '(generic-property (writer) name (typename propname))
-				     receiver actual (... ...) newval)))))
-
-	  ((static-variable typename varname)
-	   (syntax
-	    ((_)
-	     (syntax (#%extern-apply 'name
-				     '(static-variable () name (typename varname)))))))
-
-	  )))
-
-    (syntax-case x ()
-      ((_ name (kind arg ...) ...)
-       (with-syntax (((clauses ...) (map (lambda (clause)
-					   (build-clause (syntax name) clause))
-					 (syntax ((kind arg ...) ...)))))
-	 (syntax
-	  (lambda (x)
-	    (syntax-case x ()
-	      clauses ...))))))))
-
-(define-syntax define-primitive
-  (lambda (x)
-    (syntax-case x (specific-property generic-property)
-      ((_ (rname wname) (specific-property detail ...))
-       (and (identifier? (syntax rname))
-	    (identifier? (syntax wname)))
-       (syntax
-	(begin
-	  (define-syntax rname (primitive-syntax rname (specific-property-reader detail ...)))
-	  (define-syntax wname (primitive-syntax wname (specific-property-writer detail ...))))))
-
-      ((_ (rname wname) (generic-property detail ...))
-       (and (identifier? (syntax rname))
-	    (identifier? (syntax wname)))
-       (syntax
-	(begin
-	  (define-syntax rname (primitive-syntax rname (generic-property-reader detail ...)))
-	  (define-syntax wname (primitive-syntax wname (generic-property-writer detail ...))))))
-
-      ((_ name detail ...)
-       (identifier? (syntax name))
-       (syntax
-	(define-syntax name (primitive-syntax name detail ...)))))))
-
-(define-syntax define-primitive/lambda
-  (lambda (x)
-    (syntax-case x (varargs-static)
-      ((_ name (varargs-static typename methodname))
-       (syntax
-	(define-syntax name
-	  (lambda (x)
-	    (syntax-case x ()
-	      ((id x (... ...))
-	       (syntax
-		(#%extern-apply 'name
-				'(varargs-static () name (typename methodname))
-				x (... ...))))
-	      (id
-	       (identifier? (syntax id))
-	       (syntax
-		(lambda arglist
-		  (let ((vec (list->vector arglist)))
-		    (#%extern-apply 'name
-				    '(specific-static () name (typename methodname vector))
-				    vec))))))))))
-
-      ((_ (name arg ...) (kind detail ...))
-       (syntax
-	(define-syntax name
-	  (lambda (x)
-	    (define helper (primitive-syntax name (kind detail ...)))
-	    ;; No 'set!' since it requires nasty hooking into psyntax.
-	    (syntax-case x ()
-	      ((id x (... ...)) (helper (syntax (id x (... ...)))))
-	      (id
-	       (identifier? (syntax id))
-	       (with-syntax ((application (helper (syntax (id arg ...)))))
-		 (syntax (lambda (arg ...)
-			   application))))))))))))
-
-(define-syntax let-primitive
-  (lambda (x)
-    (syntax-case x ()
-      ((_ ((name detail ...) ...) body ...)
-       (syntax
-	(let-syntax ((name (primitive-syntax name detail ...)) ...)
-	  body ...))))))
-
-(define-primitive/lambda (null? x) (type-predicate "Newmoon.Null"))
-
-(define-primitive/lambda (pair? x) (type-predicate "Newmoon.Pair"))
-
-(define-primitive/lambda (cons a d)
-  (specific-constructor "Newmoon.MutablePair" object object))
-
-(define-primitive/lambda (car x) (specific-property-reader "Newmoon.Pair" "Car"))
-(define-primitive/lambda (cdr x) (specific-property-reader "Newmoon.Pair" "Cdr"))
-(define-primitive/lambda (set-car! x v) (specific-property-writer "Newmoon.Pair" "Car"))
-(define-primitive/lambda (set-cdr! x v) (specific-property-writer "Newmoon.Pair" "Cdr"))
-
-(define-primitive/lambda (boolean? x) (type-predicate bool))
-(define-primitive/lambda (char? x) (type-predicate char))
-(define-primitive/lambda (vector? x) (type-predicate vector))
-(define-primitive/lambda (symbol? x) (type-predicate symbol))
-(define-primitive/lambda (eq? a b) (assembler "EqAssembler"))
-(define-primitive/lambda (length x) (specific-method "Newmoon.List" "ListLength"))
-(define-primitive/lambda (%%get-type x) (specific-method object "GetType"))
-
-(define (void)
-  (let-primitive ((void (specific-static "Newmoon.Undefined" "GetUndefined")))
-    (void)))
-
-(define-primitive fx= (assembler "IntEqAssembler"))
-(define-primitive fx+ (assembler "IntPlusAssembler"))
-(define-primitive fx- (assembler "IntMinusAssembler"))
-(define-primitive fx< (assembler "IntLtAssembler"))
-(define-primitive fx> (assembler "IntGtAssembler"))
-
-(define (= a b . rest)
-  (and (fx= a b)
-       (let loop ((rest rest))
-	 (or (null? rest)
-	     (and (fx= a (car rest))
-		  (loop (cdr rest)))))))
-
-(define (< a b) (fx< a b)) ;; %%%
-(define (> a b) (fx> a b)) ;; %%%
-(define (fx<= a b) (if (fx> a b) #f #t)) ; %%% inline not
-(define (fx>= a b) (if (fx< a b) #f #t)) ; %%% inline not
-(define <= fx<=)
-(define >= fx>=)
-
-(define-primitive bitwise-and (specific-static "Newmoon.Number" "And" int int))
+(define (length x)
+  (let loop ((x x) (count 0))
+    (if (null? x)
+	count
+	(loop (cdr x) (+ count 1)))))
 
 (define (caar x) (car (car x)))
 (define (cadr x) (car (cdr x)))
@@ -361,11 +156,16 @@
 (define (list . args) args)
 
 (define (fold1-right kons knil lis1)
-  (let recur ((lis lis1))
-    (if (null? lis)
-	knil
-	(let ((head (car lis)))
-	  (kons head (recur (cdr lis)))))))
+  (((lambda (recur)
+      (set! recur (lambda (lis)
+		    (if (null? lis)
+			knil
+			((lambda (head)
+			   (kons head (recur (cdr lis))))
+			 (car lis)))))
+      recur)
+    #f)
+   lis1))
 
 (define (append . ls)
   (fold1-right (lambda (l acc)
@@ -373,10 +173,11 @@
 	       '()
 	       ls))
 
-(define (map1 f lst)
-  (if (null? lst)
-      '()
-      (cons (f (car lst)) (map1 f (cdr lst)))))
+(begin-for-syntax
+ (define (map1 f lst)
+   (if (null? lst)
+       '()
+       (cons (f (car lst)) (map1 f (cdr lst))))))
 
 (define (for-each1 f lst)
   (if (null? lst)
@@ -385,319 +186,135 @@
 	(f (car lst))
 	(for-each1 f (cdr lst)))))
 
+;; These are the core macros.
+
+(begin-for-syntax
+ (define (sys$process-quasiquote exp depth)
+   (if (vector? exp)
+       (list 'list->vector (sys$process-quasiquote (vector->list exp) depth))
+       (if (pair? exp)
+	   (if (eq? (car exp) 'quasiquote)
+	       (list 'list ''quasiquote (sys$process-quasiquote (cadr exp) (+ depth 1)))
+	       (if (eq? (car exp) 'unquote)
+		   (if (= depth 1)
+		       (cadr exp)
+		       (list 'list ''unquote (sys$process-quasiquote (cadr exp) (- depth 1))))
+		   (if (if (pair? (car exp))
+			   (eq? (caar exp) 'unquote-splicing)
+			   #f)
+		       (if (= depth 1)
+			   (list 'append (cadar exp) (sys$process-quasiquote (cdr exp) depth))
+			   (list 'cons
+				 (sys$process-quasiquote (car exp) (- depth 1))
+				 (sys$process-quasiquote (cdr exp) depth)))
+		       (list 'cons
+			     (sys$process-quasiquote (car exp) depth)
+			     (sys$process-quasiquote (cdr exp) depth)))))
+	   (list 'quote exp)))))
+
+(defmacro quasiquote (quoted-list)
+  (sys$process-quasiquote quoted-list 1))
+
+(begin-for-syntax
+ (define (sys$let-transformer . args)
+   (if (symbol? (car args))
+       ((lambda (loopname names inits body)
+	  `((let ((,loopname #f))
+	      (set! ,loopname (lambda ,names ,@body))
+	      ,loopname)
+	    ,@inits))
+	(car args)
+	(map1 car (cadr args))
+	(map1 cadr (cadr args))
+	(cddr args))
+       ((lambda (names inits body)
+	  `((lambda ,names ,@body) ,@inits))
+	(map1 car (car args))
+	(map1 cadr (car args))
+	(cdr args)))))
+
+(defmacro let args
+  (apply sys$let-transformer args))
+
+(defmacro let* (bindings . body)
+  (if (null? bindings)
+      `(let () ,@body)
+      `(let (,(car bindings)) (let* ,(cdr bindings) ,@body))))
+
+(defmacro letrec (bindings . body)
+  (if (null? bindings)
+      `(let () ,@body)
+      `(let ()
+	 ,@(map1 (lambda (binding)
+		   `(define ,(car binding) ,(cadr binding)))
+		 bindings)
+	 (let () ,@body))))
+
+(defmacro and exprs
+  (if (null? exprs)
+      #t
+      (if (null? (cdr exprs))
+	  (car exprs)
+	  `(if ,(car exprs)
+	       ,(cons 'and (cdr exprs))
+	       #f))))
+
+(defmacro or exprs
+  (if (null? exprs)
+      #f
+      (if (null? (cdr exprs))
+	  (car exprs)
+	  (let ((valuesym (gensym "or-gensym")))
+	    `(let ((,valuesym ,(car exprs)))
+	       (if ,valuesym
+		   ,valuesym
+		   ,(cons 'or (cdr exprs))))))))
+
+(defmacro cond clauses
+  (if (null? clauses)
+      `(begin)
+      (let ((clause (car clauses))
+	    (rest (cdr clauses)))
+	(if (eq? (car clause) 'else)
+	    `(begin ,@(cdr clause))
+	    (if (and (> (length clause) 2)
+		     (eq? (cadr clause) '=>)) ;; unhygienic :-(
+		(let ((test-expr (car clause))
+		      (func-expr (caddr clause))
+		      (temp-id (gensym "cond-gensym")))
+		  `(let ((,temp-id ,test-expr))
+		     (if ,temp-id
+			 (,func-expr ,temp-id)
+			 (cond ,@rest))))
+		(if (null? (cdr clause))
+		    `(or ,(car clause)
+			 (cond ,@rest))
+		    `(if ,(car clause)
+			 (begin ,@(cdr clause))
+			 (cond ,@rest))))))))
+
+(defmacro do (vardefs terminator . body)
+  (let ((loopsym (gensym "do-gensym")))
+    `(let ,loopsym ,(map1 (lambda (x) (drop-right x 1)) vardefs)
+	  (cond ,terminator
+		(else ,@body
+		      (,loopsym ,@(map1 last vardefs)))))))
+
+(defmacro case (test-expr . clauses)
+  (let ((test-expr-id (gensym "case-gensym")))
+    `(let ((,test-expr-id ,test-expr))
+       (cond
+	,@(map (lambda (clause)
+		 (if (eq? (car clause) 'else)
+		     clause
+		     `((memv ,test-expr-id ',(car clause))
+		       ,@(cdr clause))))
+	       clauses)))))
+
 (define (memq key lst)
   (cond
    ((null? lst) #f)
    ((eq? (car lst) key) lst)
-   (else
-    (memq key (cdr lst)))))
-
-;---------------------------------------------------------------------------
-
-(define-primitive/lambda + (varargs-static "Newmoon.Number" "Add"))
-(define-primitive/lambda - (varargs-static "Newmoon.Number" "Sub"))
-(define-primitive/lambda * (varargs-static "Newmoon.Number" "Mul"))
-(define-primitive/lambda / (varargs-static "Newmoon.Number" "Div"))
-(define-primitive/lambda (quotient n1 n2) (generic-static "Newmoon.Number" "Quotient"))
-(define-primitive/lambda (remainder n1 n2) (generic-static "Newmoon.Number" "Remainder"))
-
-(define-primitive/lambda (list->vector x) (specific-method "Newmoon.List" "ToVector"))
-(define-primitive/lambda (zero? x) (specific-static "Newmoon.Number" "IsZero" object))
-(define-primitive/lambda (->symbol x) (specific-method object "ToString"))
-(define-primitive/lambda (string->symbol x) (specific-method string "ToString"))
-(define-primitive/lambda (symbol->string x) (specific-constructor string symbol))
-
-;; SRFI-23 error.
-(let-primitive ((scheme-error (specific-static "Newmoon.Primitive" "SchemeError" vector)))
-  (define (error msg . args)
-    (scheme-error (list->vector (cons msg args)))))
-
-(define-syntax %%string-comparison
-  (syntax-rules ()
-    ((_ pred ci)
-     (lambda (a b)
-       (let-primitive ((compare (specific-static symbol "Compare" symbol symbol bool)))
-	 (pred (compare (string->symbol a) (string->symbol b) ci)))))))
-
-(define string=? (%%string-comparison zero? #f))
-(define string-ci=? (%%string-comparison zero? #t))
-
-(define string<? (%%string-comparison negative? #f))
-(define string-ci<? (%%string-comparison negative? #t))
-
-(define string>? (%%string-comparison positive? #f))
-(define string-ci>? (%%string-comparison positive? #t))
-
-(define (string<=? a b) (not (string>? a b)))
-(define (string-ci<=? a b) (not (string-ci>? a b)))
-
-(define (string>=? a b) (not (string<? a b)))
-(define (string-ci>=? a b) (not (string-ci<? a b)))
-
-(define (string-downcase a)
-  (let-primitive ((downcase (specific-method symbol "ToLower")))
-    (symbol->string (downcase (string->symbol a)))))
-
-(define (symbol-downcase a)
-  (let-primitive ((intern (specific-static symbol "Intern" symbol))
-		  (downcase (specific-method symbol "ToLower")))
-    (intern (downcase a))))
-
-(define-primitive %%make-call/cc (closure-constructor "Newmoon.CallWithCurrentContinuation"))
-(define-primitive %%make-call/values (closure-constructor "Newmoon.CallWithValues"))
-(define-primitive %%make-values (closure-constructor "Newmoon.Values"))
-(define call-with-current-continuation (%%make-call/cc))
-(define call-with-values (%%make-call/values))
-(define values (%%make-values))
-
-(define (gensym . p)
-  (let-primitive ((g (specific-static "Newmoon.Primitive" "Gensym" symbol)))
-    (g (if (null? p)
-	   'g
-	   (->symbol (car p))))))
-
-(define-primitive/lambda vector (varargs-static "Newmoon.Primitive" "Vector"))
-(define-primitive/lambda (vector-length v) (assembler "VectorLengthAssembler"))
-(define-primitive/lambda (vector-ref v k) (assembler "VectorRefAssembler"))
-(define-primitive/lambda (vector-set! v k o) (assembler "VectorSetAssembler"))
-(define-primitive/lambda (vector->list v) (specific-static "Newmoon.List" "FromVector" vector))
-(define (vector-fill! v o)
-  (do ((i 0 (+ i 1)))
-      ((fx= i (vector-length v)))
-    (vector-set! v i o)))
-
-(let-primitive ((%%make-vector (assembler "Newmoon.MakeVectorAssembler")))
-  (define (make-vector count . o)
-    (if (pair? o)
-	(%%make-vector count (car o))
-	(%%make-vector count (void)))))
-
-(define-primitive/lambda (string? x) (type-predicate string))
-
-(let-primitive ((make-string2 (specific-constructor string int char))
-		(make-string1 (specific-constructor string int)))
-  (define (make-string count . ch)
-    (if (pair? ch)
-	(make-string2 count (car ch))
-	(make-string1 count))))
-
-(define-primitive/lambda (list->string x) (specific-static string "FromList" list))
-(define (string . args) (list->string args))
-
-(define-primitive/lambda (string->list x) (specific-method string "ToList"))
-(define-primitive/lambda (string-copy x) (specific-method string "Clone"))
-(define-primitive/lambda (string-fill! x c) (specific-method string "Fill" char))
-
-(define-primitive/lambda (string-length x) (specific-property-reader string "Length"))
-(define-primitive/lambda (string-ref x k) (specific-property-reader string "Item" int))
-(define-primitive/lambda (string-set! x k c) (specific-property-writer string "Item" int))
-(define-primitive/lambda (substring x s e) (specific-method string "SubString" int int))
-
-(define-primitive/lambda (char-numeric? x) (specific-static char "IsNumber" char))
-(define-primitive/lambda (char-whitespace? x) (specific-static char "IsWhiteSpace" char))
-(define-primitive/lambda (char-alphabetic? x) (specific-static char "IsLetter" char))
-(define-primitive/lambda (char-upper-case? x) (specific-static char "IsUpper" char))
-(define-primitive/lambda (char-lower-case? x) (specific-static char "IsLower" char))
-(define-primitive/lambda (char-downcase x) (specific-static char "ToLower" char))
-(define-primitive/lambda (char-upcase x) (specific-static char "ToUpper" char))
-(define-primitive/lambda (char->integer x) (specific-static "System.Convert" "ToInt32" char))
-(define-primitive/lambda (integer->char x) (specific-static "System.Convert" "ToChar" int))
-
-(define-primitive/lambda (%char->latin1 x) (specific-static "System.Convert" "ToInt32" char))
-(define-primitive/lambda (%latin1->char x) (specific-static "System.Convert" "ToChar" int))
-
-(define char-cased?
-  (let ((big-a (char->integer #\A))
-	(big-z (char->integer #\Z))
-	(little-a (char->integer #\a))
-	(little-z (char->integer #\z)))
-    (lambda (c)
-      (let ((i (char->integer c)))
-	(or (and (>= i big-a) (<= i big-z))
-	    (and (>= i little-a) (<= i little-z)))))))
-
-(define char-titlecase char-upcase)
-
-(define (char=? a b)
-  (fx= (char->integer a)
-       (char->integer b)))
-
-(define (char-ci=? a b)
-  (char=? (char-downcase a)
-	  (char-downcase b)))
-
-(define (char<? a b) (fx< (char->integer a) (char->integer b)))
-(define (char>? a b) (fx> (char->integer a) (char->integer b)))
-(define (char<=? a b) (fx<= (char->integer a) (char->integer b)))
-(define (char>=? a b) (fx>= (char->integer a) (char->integer b)))
-
-(define (char-ci<? a b) (char<? (char-downcase a) (char-downcase b)))
-(define (char-ci>? a b) (char>? (char-downcase a) (char-downcase b)))
-(define (char-ci<=? a b) (char<=? (char-downcase a) (char-downcase b)))
-(define (char-ci>=? a b) (char>=? (char-downcase a) (char-downcase b)))
-
-(define-primitive make-hash-table (specific-constructor "System.Collections.Hashtable"))
-(define-primitive/lambda (hash-table? x) (type-predicate "System.Collections.Hashtable"))
-(define-primitive (%%hash-table-get hash-table-put!)
-  (specific-property "System.Collections.Hashtable" "Item" object))
-(define-primitive %%hash-table-contains-key?
-  (specific-method "System.Collections.Hashtable" "Contains" object))
-(define-primitive hash-table-remove!
-  (specific-method "System.Collections.Hashtable" "Remove" object))
-(define (hash-table-get ht key fail-thunk)
-  (if (%%hash-table-contains-key? ht key)
-      (%%hash-table-get ht key)
-      (fail-thunk)))
-
-(define-primitive %%exit (specific-static "System.Environment" "Exit" int))
-(define (exit . n)
-  (if (pair? n)
-      (%%exit (car n))
-      (%%exit 0)))
-
-(define-primitive %%InvokeModule (specific-method "Newmoon.Environment" "InvokeModule" symbol))
-(define-primitive %%ClosureModule (specific-property-reader "Newmoon.Closure" "Module"))
-(define-primitive %%ModuleEnvironment (specific-property-reader "Newmoon.Module" "Env"))
-
-(define-syntax current-environment
-  (syntax-rules ()
-    ((_)
-     (%%ModuleEnvironment
-      (%%ClosureModule
-       (lambda () #f))))))
-
-(define (load f)
-  (let* ((e (current-environment))
-	 (c (%%InvokeModule e (string->symbol f))))
-    (c)))
-
-(define-primitive %%make-apply (closure-constructor "Newmoon.ApplyClosure"))
-(define apply (%%make-apply))
-
-(define-primitive/lambda (eqv? x y)
-  (specific-static "Newmoon.Primitive" "SchemeEqv" object object))
-(define-primitive/lambda (equal? x y)
-  (specific-static "Newmoon.Primitive" "SchemeEqual" object object))
-
-(define-primitive/lambda (negative? x) (specific-static "Newmoon.Primitive" "NegativeP" object))
-(define-primitive/lambda (positive? x) (specific-static "Newmoon.Primitive" "PositiveP" object))
-(define-primitive/lambda (number? x) (type-predicate int))
-(define-primitive/lambda (complex? x) (type-predicate int))
-(define-primitive/lambda (real? x) (type-predicate int))
-(define-primitive/lambda (rational? x) (type-predicate int))
-(define-primitive/lambda (integer? x) (type-predicate int))
-
-(define-primitive/lambda (exact? x) (type-predicate int))
-(define-primitive/lambda (inexact? x) (type-predicate int))
-
-(define (min arg . args)
-  (let lp ((result arg) (args args))
-    (cond
-     ((null? args) result)
-     ((< (car args) result) (lp (car args) (cdr args)))
-     (else (lp result (cdr args))))))
-
-(define (max arg . args)
-  (let lp ((result arg) (args args))
-    (cond
-     ((null? args) result)
-     ((> (car args) result) (lp (car args) (cdr args)))
-     (else (lp result (cdr args))))))
-
-(define-primitive namespace-defined? (assembler "Newmoon.NamespaceDefinedAssembler"))
-
-(define-primitive/lambda (procedure? x) (type-predicate closure))
-
-(define (last lis) (car (last-pair lis)))
-
-(define (last-pair lis)
-  (let lp ((lis lis))
-    (let ((tail (cdr lis)))
-      (if (pair? tail) (lp tail) lis))))
-
-(define (drop-right lis k)
-  (let recur ((lag lis) (lead (drop lis k)))
-    (if (pair? lead)
-	(cons (car lag) (recur (cdr lag) (cdr lead)))
-	'())))
-
-(define (list-tail lis k)
-  (let iter ((lis lis) (k k))
-    (if (zero? k) lis (iter (cdr lis) (- k 1)))))
-
-(define (list-ref lis k)
-  (car (list-tail lis k)))
-
-(define (list? x)
-  (let lp ((x x) (lag x))
-    (if (pair? x)
-	(let ((x (cdr x)))
-	  (if (pair? x)
-	      (let ((x   (cdr x))
-		    (lag (cdr lag)))
-		(and (not (eq? x lag)) (lp x lag)))
-	      (null? x)))
-	(null? x))))
-
-; (map list '(1 2 3) '(a b c d) '(p q r s t))
-;
-(define (map f lst0 . lsts)
-  (if (null? lsts)
-      (map1 f lst0)
-      (let inner-map ((f f) (lsts (cons lst0 lsts)))
-	(call-with-current-continuation
-	 (lambda (return)
-	   (for-each1 (lambda (x) (if (null? x) (return '()))) lsts)
-	   (let ((args (map1 car lsts)))
-	     (cons (apply f args) (inner-map f (map1 cdr lsts)))))))))
-
-; (for-each (lambda (x y) (display x) (newline) (display y) (newline) (newline))
-; 	  '(1 2 3)
-; 	  '(a b c d))
-;
-(define (for-each f lst0 . lsts)
-  (if (null? lsts)
-      (for-each1 f lst0)
-      (let inner-for-each ((f f) (lsts (cons lst0 lsts)))
-	(call-with-current-continuation
-	 (lambda (return)
-	   (for-each1 (lambda (x) (if (null? x) (return 'for-each-unspecified))) lsts)
-	   (let ((args (map1 car lsts)))
-	     (apply f args)
-	     (inner-for-each f (map1 cdr lsts))))))))
-
-(define (assq key alst)
-  (cond
-   ((null? alst) #f)
-   ((eq? (caar alst) key) (car alst))
-   (else
-    (assq key (cdr alst)))))
-
-(define (assv key alst)
-  (cond
-   ((null? alst) #f)
-   ((eqv? (caar alst) key) (car alst))
-   (else
-    (assv key (cdr alst)))))
-
-(define (assoc key alst)
-  (cond
-   ((null? alst) #f)
-   ((equal? (caar alst) key) (car alst))
-   (else
-    (assoc key (cdr alst)))))
-
-(define (memv key lst)
-  (cond
-   ((null? lst) #f)
-   ((eqv? (car lst) key) lst)
-   (else
-    (memv key (cdr lst)))))
-
-(define (member key lst)
-  (cond
-   ((null? lst) #f)
-   ((equal? (car lst) key) lst)
    (else
     (member key (cdr lst)))))
 
@@ -815,7 +432,7 @@
 (define-syntax receive
   (syntax-rules ()
     ((_ (var ...) expr body ...)
-     (call-with-values (lambda () expr)
+     (call-with-values expr
        (lambda (var ...)
 	 body ...)))))
 

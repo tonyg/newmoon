@@ -85,4 +85,13 @@
     (else
      (error "extern-apply called in wrong phase" args))))
 
+(define (compiler-back-end-phases input-filename sil)
+  (let ((output-filename (replace-filename-extension filename ".sil")))
+    (delete-file-if-exists output-filename)
+    (call-with-output-file output-filename
+      (lambda (o)
+	(parameterize ((print-vector-length #f)
+		       (print-graph #t))
+	  (write (list (reverse (compiler$visit-time)) sil) o))))))
+
 ;;(load "tests/test-cases.scm")
