@@ -107,31 +107,4 @@ namespace Newmoon {
 	    return ((int) x) < 0;
 	}
     }
-
-    public class ApplyClosure: Closure {
-	public ApplyClosure(Module m)
-	    : base(m)
-	{}
-
-	public override Closure Apply(object[] args, out object[] nextParameters) {
-	    int fixedArgc = args.Length - 4; // 1 for dummy, 1 for
-					     // continuation, 1 for
-					     // rcvr, 1 for arglist
-	    Closure k = (Closure) args[0];
-	    Closure rcvr = (Closure) args[1];
-	    List varArgs = (List) args[fixedArgc + 2]; // skip cont + rcvr
-	    int varArgc = varArgs.ListLength();
-
-	    object[] p = new object[fixedArgc + varArgc + 2]; // k + dummy
-	    p[0] = k;
-	    Array.Copy(args, 2, p, 1, fixedArgc); // skip cont + rcvr
-	    for (int i = 0; i < varArgc; i++) {
-		p[i + fixedArgc + 1] = ((Pair) varArgs).Car;
-		varArgs = (List) ((Pair) varArgs).Cdr;
-	    }
-
-	    nextParameters = p;
-	    return rcvr;
-	}
-    }
 }

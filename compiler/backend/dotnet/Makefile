@@ -1,32 +1,22 @@
 ifeq ($(CSC),)
 CSC=mcs
+ILASM=ilasm
+AL=al
 endif
-ifeq ($(SIL),)
-SIL=./sil
-endif
 
-all: Sil.exe
+all: Newmoon.dll
 
-extra: all Test.exe Testgen.exe TestSerialization.exe
+clean:
+	rm -f Newmoon.dll Newmoon.netmodule _temp.dll Lowlevel.obj
 
-%.dll: %.scm.sil Sil.exe
-	$(SIL) -T $(SIL_FLAGS) -o $* -a Newmoon.dll $<
+%.obj: Newmoon/%.il
+	$(ILASM) -o $@ -j $<
 
-.PRECIOUS: %.sil
-%.sil: %
-	(cd ../../; ./newmoon-mz $(NEWMOON_FLAGS) backend/dotnet/$<)
+_temp.dll: Lowlevel.obj
+	$(AL) -o $@ -d $<
 
-%.exe: %.cs Newmoon.dll
-	$(CSC) /debug /t:exe /out:$@ /r:Newmoon.dll $<
+Newmoon.netmodule: Newmoon/*.cs _temp.dll
+	$(CSC) /debug /t:module /out:$@ Newmoon/*.cs /r:_temp.dll
 
-%.exe: %.scm.sil Sil.exe
-	$(SIL) -T -x $(SIL_FLAGS) -o $* -a Newmoon.dll $<
-
-Newmoon.dll: Newmoon/*.cs
-	make -C Newmoon
-
-clean: clean-scheme
-	rm -f *.dll *.resource *.exe
-
-clean-scheme:
-	rm -f *.sil
+Newmoon.dll: Newmoon.netmodule Lowlevel.obj
+	$(AL) -o $@ -d $^

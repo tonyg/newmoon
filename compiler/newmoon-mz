@@ -2,7 +2,8 @@
 
 (parameterize ((current-inspector (make-inspector)))
   (load "support/mzscheme.scm")
-  (load "main.scm"))
+  (load "main.scm")
+  (load "backend/dotnet/dotnet-backend.scm"))
 
 (define (newmoon-main . args)
   (define interactive #f)

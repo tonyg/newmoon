@@ -8,7 +8,7 @@
 
 		ldarg.0
 		brtrue nonzero
-		tail.call void class [tt]Zot::Die()
+		tail.call void class [tt]MyNamespace.Zot::Die()
 		ret
 
 	nonzero:

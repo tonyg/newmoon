@@ -48,6 +48,9 @@
 	    (set-node-fields! node (cons (list name value) (node-fields node)))))
       (error "Node kind did not match in node-set!:" (list (node-kind node) kind node))))
 
+(define (node-push! node kind name value)
+  (node-set! node kind name (cons value (node-get node kind name))))
+
 (define (node->list node)
   (cond
    ((node? node) (cons (node-kind node) (node->list (node-fields node))))

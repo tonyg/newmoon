@@ -78,16 +78,16 @@
    ((not-break-exn? (lambda (exn) 'failed-ok)))
    (delete-file filename)))
 
-(define (compiler-back-end-phases input-filename sil)
-  (let ((output-filename (replace-filename-extension input-filename ".sil")))
-    (delete-file-if-exists output-filename)
-    (call-with-output-file output-filename
-      (lambda (o)
-	(parameterize ((print-vector-length #f)
-		       (print-graph #t))
-	  (
-	   pretty-print
-	   ;;write
-	   (list (reverse (compiler$visit-time)) sil) o))))))
+; (define (compiler-back-end-phases input-filename sil)
+;   (let ((output-filename (replace-filename-extension input-filename ".sil")))
+;     (delete-file-if-exists output-filename)
+;     (call-with-output-file output-filename
+;       (lambda (o)
+; 	(parameterize ((print-vector-length #f)
+; 		       (print-graph #t))
+; 	  (
+; 	   pretty-print
+; 	   ;;write
+; 	   (list (reverse (compiler$visit-time)) sil) o))))))
 
 ;;(load "tests/test-cases.scm")

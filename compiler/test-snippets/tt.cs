@@ -1,3 +1,4 @@
+namespace MyNamespace {
 public class Zot
 {
     public static void RecCS(int n) {
@@ -12,4 +13,5 @@ public class Zot
     {
 	throw new System.ApplicationException("Argh");
     }
+}
 }
