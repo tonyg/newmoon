@@ -27,18 +27,23 @@
 		   y))))
   (include "support/psyntax.pp"))
 
-(define (visit filename)
-  (let ((fc (string-append filename ".sil")))
-    (if (not (file-exists? fc))
-	(compile-file filename))
-    (with-input-from-file fc
-      (lambda ()
-	(let* ((detail (read))
-	       (visit-time (car detail))
-	       (parse-tree (cadr detail)))
-	  (for-each eval visit-time))))))
+(define visit
+  (let ((eval-noexpand (lambda (exp) (eval (list "noexpand" exp)))))
+    (lambda (filename)
+      (let ((fc (string-append filename ".sil")))
+	(if (not (file-exists? fc))
+	    (compile-file filename))
+	(with-input-from-file fc
+	  (lambda ()
+	    (let* ((detail (read))
+		   (visit-time (car detail))
+		   (parse-tree (cadr detail)))
+	      (for-each eval-noexpand visit-time))))))))
 
 (define (delete-file-if-exists filename)
   (if (file-exists? filename)
       (let-primitive ((del (specific-static "System.IO.File" "Delete" symbol)))
 	(del (->symbol filename)))))
+
+(define print-vector-length (make-parameter #f))
+(define print-graph (make-parameter #t))

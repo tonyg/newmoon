@@ -815,7 +815,7 @@
 (define-syntax receive
   (syntax-rules ()
     ((_ (var ...) expr body ...)
-     (call-with-values expr
+     (call-with-values (lambda () expr)
        (lambda (var ...)
 	 body ...)))))
 

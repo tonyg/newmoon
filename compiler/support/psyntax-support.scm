@@ -1,4 +1,3 @@
-(define (void) (if #f #f))
 (define andmap every)
 (define ormap any)
 

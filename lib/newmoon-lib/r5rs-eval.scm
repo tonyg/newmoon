@@ -36,13 +36,51 @@
 	 ((pair? formals) (loop (cdr formals) (cons (car formals) acc)))
 	 (else (k (reverse (cons formals acc)) #t)))))
 
+    (define (compile-recursive-definitions defs xs cte)
+      (let* ((cte-rib (map car defs))
+	     (new-cte (cons (cons #f cte-rib) cte))
+	     (actual-thunks (map (lambda (def) (compile (cdr def) new-cte)) defs))
+	     (body-thunk (compile `(begin ,@xs) new-cte))
+	     (num-defines (length cte-rib)))
+	(lambda (rte)
+	  (let* ((rte-rib (make-vector num-defines 'undefined-internal-definition))
+		 (new-rte (cons rte-rib rte)))
+	    (do ((i 0 (+ i 1))
+		 (actual-thunks actual-thunks (cdr actual-thunks)))
+		((= i num-defines)
+		 (body-thunk new-rte))
+	      (vector-set! rte-rib i ((car actual-thunks) new-rte)))))))
+
+    (define (compile-body xs cte)
+      (let collect-defs ((defs '())
+			 (xs xs))
+	(if (or (null? xs)
+		(not (and (pair? (car xs))
+			  (symbol? (caar xs))
+			  (global? (caar xs) cte))))
+	    ;; We've run out of specials and defines.
+	    (compile-recursive-definitions defs xs cte)
+	    (case (caar xs)
+	      ((begin) (collect-defs defs (append (cdar xs) (cdr xs))))
+	      ((define) (let ((def (car xs))
+			      (rest (cdr xs)))
+			  (if (pair? (cadr def))
+			      (let ((fnname (caadr def))
+				    (fnargs (cdadr def))
+				    (fnbody (cddr def)))
+				(collect-defs (alist-cons fnname `(lambda ,fnargs ,@fnbody) defs)
+					      rest))
+			      (collect-defs (alist-cons (cadr def) (caddr def) defs)
+					    rest))))
+	      (else (compile-recursive-definitions defs xs cte))))))
+
     (define (compile-lambda x cte)
       (let ((formals (cadr x))
-	    (body-expr `(begin ,@(cddr x))))
+	    (body-exps (cddr x)))
 	(analyze-formals
 	 formals
 	 (lambda (newrib isrest)
-	   (let* ((body (compile body-expr (cons (cons #f newrib) cte)))
+	   (let* ((body (compile-body body-exps (cons (cons #f newrib) cte)))
 		  (argc (length newrib)))
 	     (case argc
 	       ((0) (if isrest
@@ -76,7 +114,6 @@
 			(body (cons (list->vector r) rte))))))))))))
 
     (define (compile x cte)
-      (display "><><:: ")(write (list x cte))(newline)
       (cond
        ((symbol? x) (lookup-variable x cte
 				     (lambda (rib i global)
@@ -129,12 +166,15 @@
 					   (lambda (rte)
 					     (vector-set! (list-ref rte rib) i (val rte))))))))
 	  ((#%extern-apply) (error "extern-apply-not-supported"
-				   "(eval) doesn't support extern-apply"))
+				   "(eval) doesn't support extern-apply"
+				   x))
 	  (else (compile-combination x cte))))))
 
     (lambda (x . env)
       (write x) (newline)
-      (let* ((env (if (pair? env) (car env) '(() ())))
+      (let* ((env (if (pair? env)
+		      (car env)
+		      (scheme-report-environment 5)))
 	     (cte (car env))
 	     (rte (cdr env))
 	     (x (if (and (pair? x)
@@ -146,7 +186,7 @@
 	(thunk rte)))))
 
 (define null-environment
-  (let ((e '(() ())))
+  (let ((e '(() . ())))
     (lambda (version)
       (if (= version 5)
           e
@@ -203,8 +243,7 @@
       (letrec ((scheme-report-environment
 		(lambda (version)
 		  (if (= version 5)
-		      (cons (cons 'scheme-report-environment (car e))
-			    (cons scheme-report-environment (cdr e)))
+		      (make-rib e scheme-report-environment)
 		      (error "unsupported-environment"
 			     "eval scheme-report-environment only supports R5RS")))))
 	scheme-report-environment))))
