@@ -12,9 +12,7 @@
 		    (type type)))
 
     (methdef (methdef (name id)
-		      (virtual ,boolean?)
-		      (static ,boolean?)
-		      (entrypoint ,boolean?)
+		      (flags (%list-of ,symbol?))
 		      (rettype type)
 		      (formals (%list-of vardef))
 		      (locals (%list-of vardef))
@@ -35,6 +33,7 @@
 (define *il-module-type* "class [Newmoon]Newmoon.Module")
 (define *il-environment-type* "class [Newmoon]Newmoon.Environment")
 (define *il-cell-type* "class [Newmoon]Newmoon.Cell")
+(define *il-binding-type* "class [Newmoon]Newmoon.Binding")
 (define *il-list-type* "class [Newmoon]Newmoon.List")
 (define *il-objarray-type* "object[]")
 
@@ -47,13 +46,16 @@
 (define *il-undefined-field* "class [Newmoon]Newmoon.Undefined [Newmoon]Newmoon.Undefined::UNDEFINED")
 (define *il-null-field* "class [Newmoon]Newmoon.Null [Newmoon]Newmoon.Null::NULL")
 (define *il-cell-value-field* "object [Newmoon]Newmoon.Cell::'value'")
+(define *il-binding-value-field* "object [Newmoon]Newmoon.Binding::'value'")
+(define *il-closure-module-field* "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
 
-(define *il-reply-varargs-method* "object class [Newmoon]Newmoon.Continuation::ReplyVarargs(class [Newmoon]Newmoon.Module, object[])")
-(define *il-apply-varargs-method* "object class [Newmoon]Newmoon.Closure::ApplyVarargs(class [Newmoon]Newmoon.Module, class [Newmoon]Newmoon.Continuation, object[])")
-(define *il-lookup-global-method* "class [Newmoon]Newmoon.Cell class [Newmoon]Newmoon.Module::LookupGlobalBinding(string)")
+(define *il-reply-varargs-method* "instance object class [Newmoon]Newmoon.Continuation::ReplyVarargs(object[])")
+(define *il-apply-varargs-method* "instance object class [Newmoon]Newmoon.Closure::ApplyVarargs(class [Newmoon]Newmoon.Continuation, object[])")
+(define *il-resolve-binding-cell-method* "instance class [Newmoon]Newmoon.Binding class [Newmoon]Newmoon.Module::ResolveBindingCell(string, string)")
 
 (define *il-get-type-from-handle-method* "class [mscorlib]System.Type class [mscorlib]System.Type::GetTypeFromHandle(valuetype [mscorlib]System.RuntimeTypeHandle)")
 (define *il-program-entry-point-method* "void [Newmoon]Newmoon.Driver::ProgramEntryPoint(string[], class [mscorlib]System.Type)")
+(define *il-writeline-method* "void class [mscorlib]System.Console::WriteLine(string)")
 
 (define (make-counter receiver)
   (let ((counter 0))
@@ -99,12 +101,10 @@
     (node-push! classdef 'classdef 'fields fielddef)
     fielddef))
 
-(define (classdef-add-method! classdef name virtual static rettype formals)
+(define (classdef-add-method! classdef name flags rettype formals)
   (let ((methdef (make-node 'methdef
 			    'name (string-or-symbol->id name)
-			    'virtual virtual
-			    'static static
-			    'entrypoint #f
+			    'flags flags
 			    'rettype rettype
 			    'formals (map (lambda (entry)
 					    (make-node 'vardef
@@ -165,32 +165,34 @@
 
 (define (emit-methdef port)
   (lambda (methdef)
-    (emit port "\n")
-    (if (node-get methdef 'methdef 'static)
-	(emit port #\tab".method public static hidebysig default\n")
-	(begin
-	  (emit port #\tab".method public")
-	  (if (node-get methdef 'methdef 'virtual) (emit port " virtual newslot"))
-	  (emit port " hidebysig "
-		(if (string=? (node-get methdef 'methdef 'name) ".ctor")
-		    "specialname rtspecialname "
-		    "")
-		"instance default\n")))
-    (emit port
-	  #\tab (node-get methdef 'methdef 'rettype)
-	  " "(node-get methdef 'methdef 'name))
-    (emit-vardefs port (node-get methdef 'methdef 'formals))
-    (emit port "\n"#\tab"cil managed\n"#\tab"{\n")
-    (if (node-get methdef 'methdef 'entrypoint)
-	(emit port #\tab #\tab ".entrypoint\n"))
-    (let ((locals (node-get methdef 'methdef 'locals)))
-      (if (not (null? locals))
+    (let ((flags (node-get methdef 'methdef 'flags)))
+      (emit port "\n")
+      (if (memq 'static flags)
+	  (emit port #\tab".method public static hidebysig default\n")
 	  (begin
-	    (emit port #\tab #\tab ".locals init ")
-	    (emit-vardefs port (node-get methdef 'methdef 'locals))
-	    (emit port "\n"))))
-    (emit-instructions port methdef (node-get methdef 'methdef 'body))
-    (emit port #\tab"}\n")))
+	    (emit port #\tab".method public")
+	    (if (memq 'virtual flags) (emit port " virtual"))
+	    (if (memq 'newslot flags) (emit port " newslot"))
+	    (emit port " hidebysig "
+		  (if (string=? (node-get methdef 'methdef 'name) ".ctor")
+		      "specialname rtspecialname "
+		      "")
+		  "instance default\n")))
+      (emit port
+	    #\tab (node-get methdef 'methdef 'rettype)
+	    " "(node-get methdef 'methdef 'name))
+      (emit-vardefs port (node-get methdef 'methdef 'formals))
+      (emit port "\n"#\tab"cil managed\n"#\tab"{\n")
+      (if (memq 'entrypoint flags)
+	  (emit port #\tab #\tab ".entrypoint\n"))
+      (let ((locals (node-get methdef 'methdef 'locals)))
+	(if (not (null? locals))
+	    (begin
+	      (emit port #\tab #\tab ".locals init ")
+	      (emit-vardefs port (node-get methdef 'methdef 'locals))
+	      (emit port "\n"))))
+      (emit-instructions port methdef (node-get methdef 'methdef 'body))
+      (emit port #\tab"}\n"))))
 
 (define (emit-vardefs port formals)
   (emit port "(")
@@ -207,7 +209,7 @@
 
 (define (lookup-methdef-formal-index methdef formalname)
   (let ((formalname (string-or-symbol->id formalname)))
-    (let loop ((index (if (node-get methdef 'methdef 'static) 0 1))
+    (let loop ((index (if (memq 'static (node-get methdef 'methdef 'flags)) 0 1))
 	       (formals (node-get methdef 'methdef 'formals)))
       (if (null? formals)
 	  (error "Internal error in assembler: Formal argument not found" formalname)
@@ -252,10 +254,9 @@
        formals))
 
 (define (body-argdefs-from is-continuation argdefs)
-  (cons `(module ,*il-module-type*)
-	(if is-continuation
-	    argdefs
-	    (cons `(k ,*il-cont-type*) argdefs))))
+  (if is-continuation
+      argdefs
+      (cons `(k ,*il-cont-type*) argdefs)))
 
 (define (capture-index capture)
   (node-get (node-get capture 'capture 'new-location) 'loc-environment 'index))
@@ -314,6 +315,12 @@
 		     '(#\")
 		     (string->list str)))))
 
+(define (debug-code . strs)
+  (if #t
+      `((ldstr ,(escape-string (string-concatenate strs)))
+	(call ,*il-writeline-method*))
+      '()))
+
 (define (compiler-back-end-phases input-filename frontend-result)
   (let* ((next-lambda-name (make-counter (lambda (c) (string-append "Lambda_" (number->string c)))))
 	 (next-label (make-counter (lambda (c) (string-append "L" (number->string c)))))
@@ -346,8 +353,8 @@
 	     (expr (node-get node 'cps-lambda 'expr))
 	     (arity (let ((fl (length formals))) (if varargs (- fl 1) fl)))
 	     (supertype (if is-continuation
-			    "[Newmoon]Newmoon.Continuation"
-			    "[Newmoon]Newmoon.Closure"))
+			    "[Newmoon]Newmoon.TailContinuation"
+			    "[Newmoon]Newmoon.TailClosure"))
 	     (lambdaname (next-lambda-name))
 	     (lambdatype (qualify-class lambdaname))
 	     (classdef (make-classdef lambdaname supertype))
@@ -368,14 +375,16 @@
 	(define (gen-fixed-arity)
 	  (let ((applyv (classdef-add-method! classdef
 					      (if is-continuation "ReplyVarargs" "ApplyVarargs")
-					      #t #f "object"
+					      '(virtual) "object"
 					      (body-argdefs-from is-continuation
 								 `((args ,*il-objarray-type*))))))
 	    (add-instrs! applyv
-			 `((ldarg args)
+			 `(,@(debug-code lambdatype" fixvar")
+			   (ldarg args)
 			   (ldlen)
 			   (ldc.i4 ,arity)
 			   (bne.un wrongArity)
+			   (ldarg.0)
 			   ,@(if is-continuation
 				 '()
 				 '((ldarg k)))))
@@ -389,14 +398,12 @@
 			 `((tail.)
 			   ,(if is-continuation
 				`(call ,(string-append
-					 "object "lambdatype"::Reply"
-					 (format-types (cons *il-module-type*
-							     (make-list arity "object")))))
+					 "instance object "lambdatype"::Reply"
+					 (format-types (make-list arity "object"))))
 				`(call ,(string-append
-					 "object "lambdatype"::Apply"
-					 (format-types (cons* *il-module-type*
-							      *il-cont-type*
-							      (make-list arity "object"))))))
+					 "instance object "lambdatype"::Apply"
+					 (format-types (cons *il-cont-type*
+							     (make-list arity "object"))))))
 			   (ret)
 			   wrongArity
 			   (ldc.i4 ,arity)
@@ -408,18 +415,20 @@
 			   (throw))))
 	  (let ((applyn (classdef-add-method! classdef
 					      (if is-continuation "Reply" "Apply")
-					      #t #f "object"
+					      '(virtual) "object"
 					      (body-argdefs-from is-continuation
 								 (formals->argdefs formals)))))
+	    (add-instrs! applyn (debug-code lambdatype" reply/apply"))
 	    (gen-boxing-actions applyn)
 	    (gen-node applyn lambdatype capture-map expr)))
 
 	(define (gen-variable-arity)
 	  (let ((applyv (classdef-add-method! classdef
 					      (if is-continuation "ReplyVarargs" "ApplyVarargs")
-					      #t #f "object"
+					      '(virtual) "object"
 					      (body-argdefs-from is-continuation
 								 `((args ,*il-objarray-type*))))))
+	    (add-instrs! applyv (debug-code lambdatype" varvar"))
 	    (add-local! applyv 'restarg *il-list-type*)
 	    (add-local! applyv 'counter "int32")
 	    (add-instrs! applyv
@@ -455,6 +464,7 @@
 			   (br consLoopTop)
 
 			   consLoopDone
+			   (ldarg.0)
 			   ,@(if is-continuation
 				 '()
 				 '((ldarg k)))))
@@ -468,9 +478,8 @@
 			 `((ldloc restarg)
 			   (tail.)
 			   (call ,(string-append
-				   "object "lambdatype"::Body"
-				   (format-types `(,*il-module-type*
-						   ,@(if is-continuation '() (list *il-cont-type*))
+				   "instance object "lambdatype"::Body"
+				   (format-types `(,@(if is-continuation '() (list *il-cont-type*))
 						   ,@(make-list arity "object")
 						   ,*il-list-type*))))
 			   (ret)
@@ -485,27 +494,30 @@
 			   (throw))))
 	  (let ((applyn (classdef-add-method! classdef
 					      "Body"
-					      #f #f "object"
+					      '() "object"
 					      (body-argdefs-from is-continuation
 								 (formals->argdefs formals)))))
+	    (add-instrs! applyn (debug-code lambdatype" body"))
 	    (gen-boxing-actions applyn)
 	    (gen-node applyn lambdatype capture-map expr)))
 
-	(let ((ctor (classdef-add-method! classdef ".ctor" #f #f "void" ctor-formals)))
+	(let ((ctor (classdef-add-method! classdef ".ctor" '() "void" ctor-formals)))
 	  (add-instrs! ctor `((ldarg.0)
 			      (ldarg module)
 			      (call ,(string-append "instance void "supertype
-						    "::.ctor("*il-module-type*")"))))
+						    "::.ctor("*il-module-type*")"))
+			      ,@(debug-code lambdatype" ctor")))
 	  (for-each (lambda (global)
 		      (let ((fieldname (global->fieldname global)))
 			(classdef-add-field! classdef 
 					     (global->fieldname global)
-					     *il-cell-type*)
+					     *il-binding-type*)
 			(add-instrs! ctor `((ldarg.0)
 					    (ldarg module)
 					    (ldstr ,(escape-string (symbol->string global)))
-					    (call ,*il-lookup-global-method*)
-					    (stfld ,(string-append *il-cell-type*" "lambdatype
+					    (ldstr ,(escape-string "global"))
+					    (call ,*il-resolve-binding-cell-method*)
+					    (stfld ,(string-append *il-binding-type*" "lambdatype
 								   "::"fieldname))))))
 		    globals)
 	  (for-each (lambda (capture)
@@ -616,15 +628,17 @@
 
       (define (gen-global-get want-value name)
 	(when want-value
-	  (add-instrs! methdef `((ldfld ,(string-append *il-cell-type*" "lambdatype"::"
+	  (add-instrs! methdef `((ldarg.0)
+				 (ldfld ,(string-append *il-binding-type*" "lambdatype"::"
 							(global->fieldname name)))
-				 (ldfld ,*il-cell-value-field*)))
+				 (ldfld ,*il-binding-value-field*)))
 	  (gen-linkage/value want-value)))
 
       (define (gen-closure-instantiation want-value node captures)
 	(when want-value
 	  (let ((ctor-token (build-closure node)))
-	    (add-instr! methdef '(ldarg module))
+	    (add-instrs! methdef `((ldarg.0)
+				   (ldfld ,*il-closure-module-field*)))
 	    (for-each (lambda (capture)
 			(let* ((old-loc (node-get capture 'capture 'old-location))
 			       (arginfo (node-get capture 'capture 'arginfo)))
@@ -672,10 +686,11 @@
 	(gen-linkage/no-value want-value))
 
       (define (gen-global-set want-value name expr)
-	(add-instr! methdef `(ldfld ,(string-append *il-cell-type*" "lambdatype"::"
-						    (global->fieldname name))))
+	(add-instrs! methdef `((ldarg.0)
+			       (ldfld ,(string-append *il-binding-type*" "lambdatype"::"
+						      (global->fieldname name)))))
 	(gen #t expr)
-	(add-instr! methdef `(stfld ,*il-cell-value-field*))
+	(add-instr! methdef `(stfld ,*il-binding-value-field*))
 	(gen-linkage/no-value want-value))
 
       (define (build-argvec arity rands)
@@ -694,7 +709,6 @@
 			 want-value)
 	(let ((arity (length rands)))
 	  (gen #t rator)
-	  (add-instr! methdef `(ldarg module))
 	  (if (> arity *max-non-varargs-arity*)
 	      (if cont
 		  (begin
@@ -712,19 +726,17 @@
 		    (add-instrs! methdef
 				 `((tail.)
 				   (callvirt ,(string-append
-					       "object "*il-cont-type*"::Reply"
-					       (format-types (cons *il-module-type*
-								   (make-list arity "object"))))))))
+					       "instance object "*il-cont-type*"::Reply"
+					       (format-types (make-list arity "object")))))))
 		  (begin
 		    (for-each gen/value rands)
 		    (add-instrs! methdef
 				 `((tail.)
 				   (callvirt ,(string-append
-					       "object "*il-cont-type*"::Apply"
-					       (format-types (cons* *il-module-type*
-								    *il-cont-type*
-								    (make-list (- arity 1)
-									       "object"))))))))))
+					       "instance object "*il-closure-type*"::Apply"
+					       (format-types (cons *il-cont-type*
+								   (make-list (- arity 1)
+									      "object"))))))))))
 	  (add-instr! methdef '(ret))))
 
       (define (gen-begin want-value head tail)
@@ -773,12 +785,13 @@
       (gen #t node))
 
     (define (gen-module-constructor)
-      (let ((ctor (classdef-add-method! statics-classdef ".ctor" #f #f "void"
+      (let ((ctor (classdef-add-method! statics-classdef ".ctor" '() "void"
 					`((env ,*il-environment-type*)))))
 	(add-instrs! ctor `((ldarg.0)
 			    (ldstr ,(escape-string assembly-name))
 			    (ldarg env)
 			    (call ,*il-module-ctor*)
+			    ,@(debug-code "modctor")
 			    (ret)))))
 
     (define (gen-module-entry-point node)
@@ -791,17 +804,18 @@
       ;; It also has to have no captures.
       (compiler-assert module-entry-point-has-no-captures
 		       (null? (node-get node 'cps-lambda 'captures)))
-      (let ((entry (classdef-add-method! statics-classdef "GetEntryPoint" #t #f *il-closure-type*
+      (let ((entry (classdef-add-method! statics-classdef "GetEntryPoint"
+					 '(virtual) *il-closure-type*
 					 '()))
 	    (ctor-token (build-closure node)))
-	(add-instrs! entry `((ldarg.0) ;; this == module
+	(add-instrs! entry `(,@(debug-code "GetEntryPoint")
+			     (ldarg.0) ;; this == module
 			     (newobj "instance void" ,ctor-token)
 			     (ret)))))
 
     (define (gen-program-entry-point)
-      (let ((entry (classdef-add-method! statics-classdef "Main" #f #t "void"
+      (let ((entry (classdef-add-method! statics-classdef "Main" '(static entrypoint) "void"
 					 `((argv "string[]")))))
-	(node-set! entry 'methdef 'entrypoint #t)
 	(add-instrs! entry `((ldarg argv)
 			     (ldtoken ,statics-classname)
 			     (call ,*il-get-type-from-handle-method*)

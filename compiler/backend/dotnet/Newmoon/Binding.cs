@@ -16,5 +16,9 @@ namespace Newmoon {
 	public Object getValue() {
 	    return value;
 	}
+
+	public override string ToString() {
+	    return "#!binding<"+name+":="+value.ToString()+">";
+	}
     }
 }

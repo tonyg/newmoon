@@ -6,7 +6,7 @@ using System.Collections;
 namespace Newmoon {
     public class Driver {
 	public object vCallScheme(Module m, Closure c, object[] args) {
-	    return c.ApplyVarargs(m, new ToplevelContinuation(), args);
+	    return c.ApplyVarargs(new ToplevelContinuation(m), args);
 	}
 
 	public object CallScheme(Module m, Closure c, params object[] args) {
@@ -65,9 +65,10 @@ namespace Newmoon {
 	    SchemeString[] realArgv = new SchemeString[argv.Length];
 	    for (int i = 0; i < realArgv.Length; i++)
 		realArgv[i] = new SchemeString(argv[i]);
-	    Environment.InstallBinding(null, "argv", "global", realArgv);
+	    Environment.InstallBinding(entryModule, "argv", "global", realArgv);
 
-	    d.CallScheme(entryModule, entryModule.GetEntryPoint());
+	    Closure entryPoint = entryModule.GetEntryPoint();
+	    d.CallScheme(entryModule, entryPoint);
 	}
     }
 }
