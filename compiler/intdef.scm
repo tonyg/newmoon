@@ -53,8 +53,7 @@
 			       defs)))
 	      (let* ((temp-formals (map make-arginfo (map car temps)))
 		     (def-formals (map make-arginfo (map cdr temps)))
-		     (dummy-initialisers (map (lambda (x) (make-node 'ds-lit 'value 'dummy-init))
-					      defs))
+		     (dummy-initialisers (map (lambda (x) (make-node 'ds-void)) defs))
 		     (updaters (map (lambda (temp-entry)
 				      (make-node 'ds-set
 						 'name (cdr temp-entry)
@@ -63,7 +62,7 @@
 				    temps))
 		     (rewritten-exprs (map rewrite-internal-definitions exprs))
 		     (updaters-and-exprs (make-begin 'ds-begin
-						     (make-node 'ds-lit 'value 'empty-letrec)
+						     (make-node 'ds-void)
 						     (append updaters rewritten-exprs)))
 		     (inner-apply (make-node 'ds-apply
 					     'rator (make-node 'ds-lambda
@@ -91,6 +90,7 @@
 (define (rewrite-internal-definitions expr)
   (node-match expr
 	      ((lit value) (make-node 'ds-lit 'value value))
+	      ((void) (make-node 'ds-void))
 	      ((var name) (make-node 'ds-var 'name name))
 	      ((lambda formals body)
 	       (rewrite-lambda-internal-definitions formals body))
@@ -100,7 +100,7 @@
 			  'rands (map rewrite-internal-definitions rands)))
 	      ((begin exprs)
 	       (make-begin 'ds-begin
-			   (make-node 'ds-lit 'value 'empty-begin)
+			   (make-node 'ds-void)
 			   (map rewrite-internal-definitions (flatten-body exprs))))
 	      ((if test true false)
 	       (make-node 'ds-if

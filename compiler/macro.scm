@@ -127,7 +127,7 @@
 					   'test (expand (cadr expr))
 					   'true (expand (caddr expr))
 					   'false (if (null? (cdddr expr))
-						      (make-lit #f)
+						      (make-node 'void)
 						      (expand (car (cdddr expr))))))
 	      ((set!)		(make-node 'set
 					   'name (cadr expr)

@@ -13,6 +13,7 @@
     (core-scheme
      (%or
       (lit (value #t))
+      (void)
       (var (name ,symbol?))
       (lambda (formals #t) (varargs ,boolean?) (body (%list-of core-scheme)))
       (apply (rator core-scheme) (rands (%list-of core-scheme)))
@@ -26,6 +27,7 @@
     (ds
      (%or
       (ds-lit (value #t))
+      (ds-void)
       (ds-var (name ,symbol?))
       (ds-lambda (formals (%list-of arginfo)) (varargs ,boolean?) (expr ds))
       (ds-apply (rator ds) (rands (%list-of ds)))
@@ -38,6 +40,7 @@
     (cps-value
      (%or
       (cps-lit (value #t))
+      (cps-void)
       (cps-var (name ,symbol?))
       (cps-lambda (formals (%list-of arginfo)) (varargs ,boolean?) (expr cps-exp))
       (cps-asm (formals (%list-of ,symbol?)) (actuals (%list-of cps-value)) (code assembly))
@@ -65,6 +68,7 @@
     (cps2-value
      (%or
       (cps-lit (value #t))
+      (cps-void)
       (cps-local-get (name ,symbol?) (arginfo arginfo) (location local-location))
       (cps-global-get (name ,symbol?))
       (cps-lambda (formals (%list-of arginfo))
@@ -90,7 +94,7 @@
 
 (define (core-scheme-child-attrs node)
   (case (node-kind node)
-    ((lit var) '())
+    ((lit void var) '())
     ((lambda) 'body)
     ((apply) '(rator . rands))
     ((begin) 'exprs)
@@ -101,7 +105,7 @@
 
 (define (ds-child-attrs node)
   (case (node-kind node)
-    ((ds-lit ds-var) '())
+    ((ds-lit ds-void ds-var) '())
     ((ds-lambda) '(expr))
     ((ds-apply) '(rator . rands))
     ((ds-begin) '(head tail))
@@ -112,7 +116,7 @@
 
 (define (cps-child-attrs node)
   (case (node-kind node)
-    ((cps-lit cps-var) '())
+    ((cps-lit cps-void cps-var) '())
     ((cps-lambda) '(expr))
     ((cps-asm) 'actuals)
     ((cps-set) '(expr))
@@ -123,7 +127,7 @@
 
 (define (cps2-child-attrs node)
   (case (node-kind node)
-    ((cps-lit cps-local-get cps-global-get) '())
+    ((cps-lit cps-void cps-local-get cps-global-get) '())
     ((cps-lambda) '(expr))
     ((cps-asm) 'actuals)
     ((cps-local-set cps-global-set) '(expr))

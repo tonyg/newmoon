@@ -1,6 +1,6 @@
 (define (head-exprs expr)
   (node-collect-subnodes expr (case (node-kind expr)
-				((ds-lit ds-var ds-lambda) '())
+				((ds-lit ds-void ds-var ds-lambda) '())
 				((ds-apply) '(rator . rands))
 				((ds-begin) '(head))
 				((ds-if) '(test))
@@ -12,7 +12,7 @@
 
 (define (tail-exprs expr)
   (node-collect-subnodes expr (case (node-kind expr)
-				((ds-lit ds-var ds-lambda ds-apply ds-set ds-asm) '())
+				((ds-lit ds-void ds-var ds-lambda ds-apply ds-set ds-asm) '())
 				((ds-begin) '(tail))
 				((ds-if) '(true false))
 				(else (error "internal-compiler-error"
@@ -126,6 +126,7 @@
 (define (cps-transform node)
   (node-match node
 	      ((ds-lit value) (make-node 'cps-lit 'value value))
+	      ((ds-void) (make-node 'cps-void))
 	      ((ds-var name) (make-node 'cps-var 'name name))
 	      ((ds-lambda formals varargs expr)
 	       (let ((cont-arg (gen-cont-sym)))

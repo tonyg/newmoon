@@ -20,7 +20,7 @@
   (node-match node
 	      ((cps-begin head tail)
 	       (case (node-kind head)
-		 ((cps-lit cps-var cps-lambda) tail)
+		 ((cps-lit cps-void cps-var cps-lambda) tail)
 		 ((cps-begin) (compiler-assert
 			       begin-should-never-be-head-of-itself
 			       #f))

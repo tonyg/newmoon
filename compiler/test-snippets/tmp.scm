@@ -2,10 +2,10 @@
   (define (v val) (w val))
   (define (w val)
     (%assemble (x) (val)
-      (scheme (display x))))
+      (scheme (display x)))
+    (if #f #f))
   (v "Hello, ")
   (v y)
-  (v "!")
-  (newline))
+  (v "!\n"))
 
 (x "world")
