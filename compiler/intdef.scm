@@ -15,26 +15,6 @@
 (define (arginfo-mutate! ai)
   (node-set! ai 'arginfo 'mutated #t))
 
-(define (parse-lambda-formals formals)
-  (let walk ((formals formals)
-	     (acc '()))
-    (cond ((pair? formals)
-	   (walk (cdr formals)
-		 (cons (car formals) acc)))
-	  ((null? formals)
-	   (let ((new-args (reverse acc)))
-	     (values #f
-		     (map make-normal-arginfo new-args))))
-	  (else
-	   (values #t
-		   (reverse (cons (make-node 'arginfo
-					     'name formals
-					     'cont #f
-					     'captured #f
-					     'mutated #f
-					     'is-rest #t)
-				  (map make-normal-arginfo acc))))))))
-
 (define (make-begin begin-kind empty-value exprs)
   (reduce-right (lambda (head tail)
 		  (make-node begin-kind
@@ -85,11 +65,22 @@
 					     'rands dummy-initialisers)))
 		outer-apply))))))
 
-(define (rewrite-lambda-internal-definitions formals body)
-  (let-values (((has-rest arginfos) (parse-lambda-formals formals)))
+(define (rewrite-lambda-internal-definitions formals varargs body)
+  (let* ((rev-formals (reverse formals))
+	 (rev-normals (map make-normal-arginfo (if varargs (cdr rev-formals) rev-formals)))
+	 (rev-arginfos (if varargs
+			   (cons (make-node 'arginfo
+					    'name (car rev-formals)
+					    'cont #f
+					    'captured #f
+					    'mutated #f
+					    'is-rest #t)
+				 rev-normals)
+			   rev-normals))
+	 (arginfos (reverse rev-arginfos)))
     (make-node 'ds-lambda
 	       'formals arginfos
-	       'varargs #f
+	       'varargs varargs
 	       'expr (rewrite-body-internal-definitions body))))
 
 (define (rewrite-internal-definitions expr)
@@ -97,8 +88,8 @@
 	      ((lit value) (make-node 'ds-lit 'value value))
 	      ((void) (make-node 'ds-void))
 	      ((var name) (make-node 'ds-var 'name name))
-	      ((lambda formals body)
-	       (rewrite-lambda-internal-definitions formals body))
+	      ((lambda formals varargs body)
+	       (rewrite-lambda-internal-definitions formals varargs body))
 	      ((apply rator rands)
 	       (make-node 'ds-apply
 			  'rator (rewrite-internal-definitions rator)

@@ -50,10 +50,11 @@
 
 	(define (make-lambda formals body)
 	  (let* ((rib (listify formals))
-		 (new-scope (cons rib scope)))
+		 (new-scope (cons rib scope))
+		 (varargs (not (list? formals))))
 	    (make-node 'lambda
 		       'formals rib
-		       'varargs (not (list? formals))
+		       'varargs varargs
 		       'body (map (lambda (x) (expand/scope new-scope x)) body))))
 
 	(let expand ((expr expr))

@@ -28,6 +28,7 @@
 (define *il-closure-type* "class [Newmoon]Newmoon.Closure")
 (define *il-module-type* "class [Newmoon]Newmoon.Module")
 (define *il-cell-type* "class [Newmoon]Newmoon.Cell")
+(define *il-list-type* "class [Newmoon]Newmoon.List")
 (define *il-objarray-type* "object[]")
 
 (define *il-wrongargc-ctor* "instance void [Newmoon]Newmoon.WrongArgCount::.ctor(int32, int32, bool, bool)")
@@ -197,7 +198,18 @@
   (mangle-id (node-get arginfo 'arginfo 'name)))
 
 (define (formals->argdefs formals)
-  (map (lambda (arginfo) (list (arginfo->id arginfo) "object")) formals))
+  (map (lambda (arginfo)
+	 (list (arginfo->id arginfo)
+	       (if (node-get arginfo 'arginfo 'is-rest)
+		   *il-list-type*
+		   "object")))
+       formals))
+
+(define (body-argdefs-from is-continuation argdefs)
+  (cons `(module ,*il-module-type*)
+	(if is-continuation
+	    argdefs
+	    (cons `(k ,*il-cont-type*) argdefs))))
 
 (define (capture-index capture)
   (node-get (node-get capture 'capture 'new-location) 'loc-environment 'index))
@@ -296,18 +308,23 @@
 	     (capture-map (gen-capture-fields! classdef captures))
 	     (ctor-formals (cons `(module ,*il-module-type*) (capture-source-args captures))))
 
+	(define (gen-boxing-actions methdef)
+	  (for-each (lambda (arginfo)
+		      (if (arginfo-boxed? arginfo)
+			  (begin
+			    (compiler-assert continuation-arginfo-never-boxed
+					     (not (node-get arginfo 'arginfo 'cont)))
+			    (add-instrs! methdef `((ldarg ,(arginfo->id arginfo))
+						   (newobj ,*il-cell-ctor*)
+						   (starg ,(arginfo->id arginfo)))))))
+		    formals))
+
 	(define (gen-fixed-arity)
 	  (let ((applyv (classdef-add-method! classdef
-					      (if is-continuation
-						  "ReplyVarargs"
-						  "ApplyVarargs")
+					      (if is-continuation "ReplyVarargs" "ApplyVarargs")
 					      #t #f "object"
-					      (if is-continuation
-						  `((module ,*il-module-type*)
-						    (args ,*il-objarray-type*))
-						  `((module ,*il-module-type*)
-						    (k ,*il-cont-type*)
-						    (args ,*il-objarray-type*))))))
+					      (body-argdefs-from is-continuation
+								 `((args ,*il-objarray-type*))))))
 	    (add-instrs! applyv
 			 `((ldarg args)
 			   (ldlen)
@@ -346,29 +363,87 @@
 	  (let ((applyn (classdef-add-method! classdef
 					      (if is-continuation "Reply" "Apply")
 					      #t #f "object"
-					      (cons `(module ,*il-module-type*)
-						    (if is-continuation
-							(formals->argdefs formals)
-							(cons `(k ,*il-cont-type*)
-							      (formals->argdefs formals)))))))
-	    (for-each (lambda (arginfo)
-			(if (arginfo-boxed? arginfo)
-			    (begin
-			      (compiler-assert continuation-arginfo-never-boxed
-					       (not (node-get arginfo 'arginfo 'cont)))
-			      (add-instrs! applyn `((ldarg ,(arginfo->id arginfo))
-						    (newobj ,*il-cell-ctor*)
-						    (starg ,(arginfo->id arginfo)))))))
-		      formals)
-	    (gen-node applyn lambdatype capture-map expr)
-	    'dummy))
+					      (body-argdefs-from is-continuation
+								 (formals->argdefs formals)))))
+	    (gen-boxing-actions applyn)
+	    (gen-node applyn lambdatype capture-map expr)))
 
 	(define (gen-variable-arity)
-	  (let ((applyv (classdef-add-method! classdef "ApplyVarargs" #t #f "object"
-					      `((module ,*il-module-type*)
-						(k ,*il-cont-type*)
-						(args ,*il-objarray-type*)))))
-	    (add-instr! applyv '("// gen-variable-arity %%%%%%"))))
+	  (let ((applyv (classdef-add-method! classdef
+					      (if is-continuation "ReplyVarargs" "ApplyVarargs")
+					      #t #f "object"
+					      (body-argdefs-from is-continuation
+								 `((args ,*il-objarray-type*))))))
+	    (add-local! applyv 'restarg *il-list-type*)
+	    (add-local! applyv 'counter "int32")
+	    (add-instrs! applyv
+			 `((ldarg args)
+			   (ldlen)
+			   (ldc.i4 ,arity)
+			   (blt.un tooFewArguments)
+
+			   (ldsfld ,*il-null-field*)
+			   (stloc restarg)
+			   (ldarg args)
+			   (ldlen)
+			   (ldc.i1 1)
+			   (sub)
+			   (stloc counter)
+
+			   consLoopTop
+			   (ldloc counter)
+			   (ldc.i4 ,arity)
+			   (blt.un consLoopDone)
+
+			   (ldarg args)
+			   (ldloc counter)
+			   (ldelem.ref)
+			   (ldloc restarg)
+			   (newobj ,*il-pair-ctor*)
+			   (stloc restarg)
+
+			   (ldloc counter)
+			   (ldc.i4 1)
+			   (sub)
+			   (stloc counter)
+			   (br consLoopTop)
+
+			   consLoopDone
+			   ,@(if is-continuation
+				 '()
+				 '((ldarg k)))))
+	    (do ((i 0 (+ i 1)))
+		((= i arity))
+	      (add-instrs! applyv
+			   `((ldarg args)
+			     (ldc.i4 ,i)
+			     (ldelem.ref))))
+	    (add-instrs! applyv
+			 `((ldloc restarg)
+			   (tail.)
+			   (call ,(string-append
+				   "object "lambdatype"::Body"
+				   (format-types `(,*il-module-type*
+						   ,@(if is-continuation '() (list *il-cont-type*))
+						   ,@(make-list arity "object")
+						   ,*il-list-type*))))
+			   (ret)
+
+			   tooFewArguments
+			   (ldc.i4 ,arity)
+			   (ldarg args)
+			   (ldlen)
+			   (ldc.i4 1)
+			   (ldc.i4 ,(if is-continuation 1 0))
+			   (newobj ,*il-wrongargc-ctor*)
+			   (throw))))
+	  (let ((applyn (classdef-add-method! classdef
+					      "Body"
+					      #t #f "object"
+					      (body-argdefs-from is-continuation
+								 (formals->argdefs formals)))))
+	    (gen-boxing-actions applyn)
+	    (gen-node applyn lambdatype capture-map expr)))
 
 	(let ((ctor (classdef-add-method! classdef ".ctor" #f #f "void" ctor-formals)))
 	  (add-instrs! ctor `((ldarg.0)
@@ -445,9 +520,19 @@
     (define (gen-node methdef lambdatype capture-map node)
       ;; Perhaps need a headposition/tailposition indicator, so that
       ;; we don't generate redundant computations?
-      (define (gen-void)
-	(add-instr! methdef
-		    `(ldsfld ,*il-undefined-field*)))
+      (define (gen-void want-value)
+	(gen-linkage/no-value want-value))
+
+      (define (gen-linkage/value want-value)
+	(if want-value
+	    #t ;; do nothing - have a value and want a value
+	    ;; Otherwise, pop a value as what we have is unwanted
+	    (add-instr! methdef `(pop))))
+
+      (define (gen-linkage/no-value want-value)
+	(if want-value
+	    (add-instr! methdef `(ldsfld ,*il-undefined-field*))
+	    #t))
 
       (define (gen-local-load arginfo location)
 	(node-match location
@@ -474,29 +559,35 @@
 								 (capture-index->name
 								  index capture-map)))))))
 
-      (define (gen-local-get arginfo location)
-	(gen-local-load arginfo location)
-	(if (arginfo-boxed? arginfo)
-	    (add-instrs! methdef
-			 `((castclass ,*il-cell-type*)
-			   (ldfld ,*il-cell-value-field*)))))
+      (define (gen-local-get want-value arginfo location)
+	(when want-value
+	  (gen-local-load arginfo location)
+	  (if (arginfo-boxed? arginfo)
+	      (add-instrs! methdef
+			   `((castclass ,*il-cell-type*)
+			     (ldfld ,*il-cell-value-field*))))
+	  (gen-linkage/value want-value)))
 
-      (define (gen-global-get name)
-	(add-instrs! methdef `((ldfld ,(string-append *il-cell-type*" "lambdatype"::"
-						      (global->fieldname name)))
-			       (ldfld ,*il-cell-value-field*))))
+      (define (gen-global-get want-value name)
+	(when want-value
+	  (add-instrs! methdef `((ldfld ,(string-append *il-cell-type*" "lambdatype"::"
+							(global->fieldname name)))
+				 (ldfld ,*il-cell-value-field*)))
+	  (gen-linkage/value want-value)))
 
-      (define (gen-closure-instantiation node captures)
-	(let ((ctor-token (build-closure node)))
-	  (add-instr! methdef '(ldarg module))
-	  (for-each (lambda (capture)
-		      (let* ((old-loc (node-get capture 'capture 'old-location))
-			     (arginfo (node-get capture 'capture 'arginfo)))
-			(gen-local-load arginfo old-loc)))
-		    captures)
-	  (add-instr! methdef `(newobj ,ctor-token))))
+      (define (gen-closure-instantiation want-value node captures)
+	(when want-value
+	  (let ((ctor-token (build-closure node)))
+	    (add-instr! methdef '(ldarg module))
+	    (for-each (lambda (capture)
+			(let* ((old-loc (node-get capture 'capture 'old-location))
+			       (arginfo (node-get capture 'capture 'arginfo)))
+			  (gen-local-load arginfo old-loc)))
+		      captures)
+	    (add-instr! methdef `(newobj ,ctor-token))
+	    (gen-linkage/value want-value))))
 
-      (define (gen-asm formals actuals code)
+      (define (gen-asm want-value formals actuals code)
 	(let* ((dotnet-code (cond
 			     ((find (lambda (clause)
 				      (eq? 'dotnet (node-get clause 'backend-asm 'name)))
@@ -510,7 +601,7 @@
 	  (for-each (lambda (instr)
 		      (cond
 		       ((symbol? instr) (add-instr! methdef (cdr (assq instr labels))))
-		       ((eq? (car instr) '$) (gen (cdr (assq (cadr instr) env))))
+		       ((eq? (car instr) '$) (gen #t (cdr (assq (cadr instr) env))))
 		       (else
 			(let ((alpha-converted-instr
 			       (map (lambda (x) (if (symbol? x)
@@ -521,22 +612,25 @@
 						    x))
 				    instr)))
 			  (add-instr! methdef alpha-converted-instr)))))
-		    dotnet-code)))
+		    dotnet-code)
+	  (gen-linkage/value want-value)))
 
-      (define (gen-local-set arginfo location expr)
+      (define (gen-local-set want-value arginfo location expr)
 	(if (arginfo-boxed? arginfo)
 	    (begin
 	      (gen-local-load arginfo location)
 	      (add-instr! methdef `(castclass ,*il-cell-type*))
-	      (gen expr)
+	      (gen #t expr)
 	      (add-instr! methdef `(stfld ,*il-cell-value-field*)))
-	    (gen-local-store arginfo location (lambda () (gen expr)))))
+	    (gen-local-store arginfo location (lambda () (gen #t expr))))
+	(gen-linkage/no-value want-value))
 
-      (define (gen-global-set name expr)
+      (define (gen-global-set want-value name expr)
 	(add-instr! methdef `(ldfld ,(string-append *il-cell-type*" "lambdatype"::"
 						    (global->fieldname name))))
-	(gen expr)
-	(add-instr! methdef `(stfld ,*il-cell-value-field*)))
+	(gen #t expr)
+	(add-instr! methdef `(stfld ,*il-cell-value-field*))
+	(gen-linkage/no-value want-value))
 
       (define (build-argvec arity rands)
 	(add-instrs! methdef `((ldc.i4 ,arity)
@@ -546,12 +640,14 @@
 	    ((= i arity))
 	  (add-instrs! methdef `((dup)
 				 (ldc.i4 ,i)))
-	  (gen (car rands))
+	  (gen #t (car rands))
 	  (add-instr! methdef '(stelem.ref))))
 
-      (define (gen-apply cont rator rands)
+      (define (gen-apply want-value cont rator rands)
+	(compiler-assert gen-apply-called-in-wanted-value-context
+			 want-value)
 	(let ((arity (length rands)))
-	  (gen rator)
+	  (gen #t rator)
 	  (add-instr! methdef `(ldarg module))
 	  (if (> arity *max-non-varargs-arity*)
 	      (if cont
@@ -560,13 +656,13 @@
 		    (add-instrs! methdef `((tail.)
 					   (callvirt ,*il-reply-varargs-method*))))
 		  (begin
-		    (gen (car rands))
+		    (gen #t (car rands))
 		    (build-argvec (- arity 1) (cdr rands))
 		    (add-instrs! methdef `((tail.)
 					   (callvirt ,*il-apply-varargs-method*)))))
 	      (if cont
 		  (begin
-		    (for-each gen rands)
+		    (for-each gen/value rands)
 		    (add-instrs! methdef
 				 `((tail.)
 				   (callvirt ,(string-append
@@ -574,7 +670,7 @@
 					       (format-types (cons *il-module-type*
 								   (make-list arity "object"))))))))
 		  (begin
-		    (for-each gen rands)
+		    (for-each gen/value rands)
 		    (add-instrs! methdef
 				 `((tail.)
 				   (callvirt ,(string-append
@@ -585,47 +681,50 @@
 									       "object"))))))))))
 	  (add-instr! methdef '(ret))))
 
-      (define (gen-begin head tail)
-	(gen head)
-	(add-instr! methdef '("// POP VALUE HERE??? %%%%%%"))
-	(gen tail))
+      (define (gen-begin want-value head tail)
+	(gen #f head)
+	(gen want-value tail))
 
-      (define (gen-if test true false)
+      (define (gen-if want-value test true false)
 	(let ((label-true/pop (next-label))
 	      (label-true (next-label))
 	      (label-done (next-label)))
-	  (gen test)
+	  (gen #t test)
 	  (add-instrs! methdef `((dup)
 				 (isinst "bool")
 				 (brfalse ,label-true/pop)
 				 (unbox "bool")
 				 (ldind.i1)
 				 (brtrue ,label-true)))
-	  (gen false)
+	  (gen want-value false)
 	  (add-instrs! methdef `((br ,label-done)
 				 ,label-true/pop
 				 (pop)
 				 ,label-true))
-	  (gen true)
+	  (gen want-value true)
 	  (add-instrs! methdef `(,label-done))))
 
-      (define (gen node)
-	(node-match node
-		    ((cps-lit value) (gen-literal methdef value))
-		    ((cps-void) (gen-void))
-		    ((cps-local-get name arginfo location) (gen-local-get arginfo location))
-		    ((cps-global-get name) (gen-global-get name))
-		    ((cps-lambda cont formals varargs captures globals expr)
-		     (gen-closure-instantiation node captures))
-		    ((cps-asm formals actuals code) (gen-asm formals actuals code))
-		    ((cps-local-set name arginfo location expr)
-		     (gen-local-set arginfo location expr))
-		    ((cps-global-set name expr) (gen-global-set name expr))
-		    ((cps-apply cont rator rands) (gen-apply cont rator rands))
-		    ((cps-begin head tail) (gen-begin head tail))
-		    ((cps-if test true false) (gen-if test true false))))
+      (define (gen/value node)
+	(gen #t node))
 
-      (gen node))
+      (define (gen want-value node)
+	(node-match node
+		    ((cps-lit value) (if want-value (gen-literal methdef value)))
+		    ((cps-void) (gen-void want-value))
+		    ((cps-local-get name arginfo location)
+		     (gen-local-get want-value arginfo location))
+		    ((cps-global-get name) (gen-global-get want-value name))
+		    ((cps-lambda cont formals varargs captures globals expr)
+		     (gen-closure-instantiation want-value node captures))
+		    ((cps-asm formals actuals code) (gen-asm want-value formals actuals code))
+		    ((cps-local-set name arginfo location expr)
+		     (gen-local-set want-value arginfo location expr))
+		    ((cps-global-set name expr) (gen-global-set want-value name expr))
+		    ((cps-apply cont rator rands) (gen-apply want-value cont rator rands))
+		    ((cps-begin head tail) (gen-begin want-value head tail))
+		    ((cps-if test true false) (gen-if want-value test true false))))
+
+      (gen #t node))
 
     (define (gen-module-entry-point node)
       ;; We're relying here on being handed a cps-lambda node, that is

@@ -14,4 +14,10 @@
 (define (high-arity a b c d e f)
   (+ a b c d e f))
 
+(define (la-va x . allrest)
+  (cons x allrest))
+
+(define (ha-va a b c d e f . allrest)
+  (list allrest f e d c b a))
+
 (x "world")
