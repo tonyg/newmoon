@@ -9,8 +9,6 @@
 (require (lib "1.ss" "srfi")
 	 (lib "13.ss" "srfi")
 	 (lib "9.ss" "srfi")
-	 (lib "test.ss" "schemeunit")
-	 (lib "text-ui.ss" "schemeunit")
 	 (lib "pretty.ss")
 	 (lib "defmacro.ss")
 	 (lib "etc.ss"))
