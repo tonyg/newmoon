@@ -29,6 +29,7 @@
 (define main$libpath (make-parameter (list "../lib")))
 (define compiler$without-basic-libraries (make-parameter #t))
 (define compiler$make-program (make-parameter #f))
+(define compiler$target-namespace (make-parameter #f))
 
 (define (replace-filename-extension filename new-extension)
   (cond
@@ -50,30 +51,18 @@
     (lambda (filename)
       (display ";; compile-file compiling ") (display filename) (newline)
       (let ((exprs (call-with-input-file filename read-all-sexps)))
-; 	(if (not basic-visited)
-; 	    (if (compiler$without-basic-libraries)
-; 		(macro-expand '(defmacro sys$install-binding (name kind val)
-; 				 `(%jvm-assemble '(name kind val) (,name ,kind ,val)
-; 				    '((load "sisc.interpreter.Interpreter" 2)
-; 				      ($ name)
-; 				      ($ kind)
-; 				      ($ val)
-; 				      (invoke "sisc.newmoon.Util"
-; 					      "defineGlobal"
-; 					      "sisc.data.Value"
-; 					      ("sisc.interpreter.Interpreter"
-; 					       "sisc.data.Value"
-; 					       "sisc.data.Value"
-; 					       "sisc.data.Value")
-; 					      static)))))
-; 		(begin
-; 		  (visit (resolve-library-path "basic-library.scm" '()))
-; 		  (set! basic-visited #t))))
+	(if (not basic-visited)
+	    (if (not (compiler$without-basic-libraries))
+		(begin
+		  (visit (resolve-library-path "basic-library.scm" '()))
+		  (set! basic-visited #t))))
 	(parameterize ((compiler$visit-time '()))
 	  (compiler-back-end-phases filename
 				    (compiler-front-end-phases `(begin ,@exprs)))
 	  (display ";; compile-file finished  ") (display filename) (newline))))))
 
 (define (compile-expr expr)
-  (compiler-back-end-phases "IMMEDIATEcompileexpr"
-			    (compiler-front-end-phases expr)))
+  ;; Not finished/working yet
+  (parameterize ((compiler$make-program #f))
+    (compiler-back-end-phases "IMMEDIATEcompileexpr"
+			      (compiler-front-end-phases expr))))

@@ -22,6 +22,7 @@
 	  ((#\X) (compiler$make-program #f) rest)
 	  ((#\i) (set! interactive #t) rest)
 	  ((#\e) (set! mode 'evaluating) rest)
+	  ((#\N) (compiler$target-namespace (car rest)) (cdr rest))
 	  (else
 	   (error "Unknown command-line switch" arg)))))
 
