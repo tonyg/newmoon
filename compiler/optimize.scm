@@ -1,41 +1,35 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Simple optimizations.
 
-(define (remove-thunk-in-head-position ast)
-  (node-tree-map! (lambda (node)
-		    (node-match node
-				((apply rator rands)
-				 (if (null? rands)
-				     (node-match rator
-						 ((lambda all-arginfos all-bodies)
-						  (let loop ((all-arginfos all-arginfos)
-							     (all-bodies all-bodies))
-						    (cond
-						     ((null? all-arginfos) node)
-						     ((null? (car all-arginfos)) (car all-bodies))
-						     (else (loop (cdr all-arginfos)
-								 (cdr all-bodies))))))
-						 (else node))
-				     node))
-				(else node)))
-		  ast))
+(define (remove-thunk-in-head-position node)
+  (node-children-map! ds-child-attrs remove-thunk-in-head-position node)
+  (node-match node
+	      ((ds-apply rator rands)
+	       (if (null? rands)
+		   (node-match rator
+			       ((ds-lambda formals varargs expr)
+				(if (null? formals)
+				    expr
+				    node))
+			       (else node))
+		   node))
+	      (else node)))
 
-(define (remove-begin-head-noops ast)
-  (node-tree-map! (lambda (node)
-		    (node-match node
-				((begin head tail)
-				 (case (node-kind head)
-				   ((lit singleton var lambda) tail)
-				   ((begin) (compiler-assert
-					     begin-should-never-be-head-of-itself
-					     #f))
-				   ((apply if set jvm-assemble) node)
-				   (else
-				    (for-each display
-					      (list ";; Warning: unknown node-type in "
-						    "remove-begin-head-noops: "
-						    (node-kind head)
-						    #\newline)))))
-				(else
-				 node)))
-		  ast))
+(define (remove-begin-head-noops node)
+  (node-children-map! cps-child-attrs remove-begin-head-noops node)
+  (node-match node
+	      ((cps-begin head tail)
+	       (case (node-kind head)
+		 ((cps-lit cps-var cps-lambda) tail)
+		 ((cps-begin) (compiler-assert
+			       begin-should-never-be-head-of-itself
+			       #f))
+		 ((cps-apply cps-if cps-set cps-asm) node)
+		 (else
+		  (for-each display
+			    (list ";; Warning: unknown node-type in remove-begin-head-noops: "
+				  (node-kind head)
+				  #\newline))
+		  node)))
+	      (else
+	       node)))

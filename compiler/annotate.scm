@@ -3,99 +3,112 @@
 
 ;; Main entry point:
 (define (annotate-tree cps-parse-tree)
-  (annotate-env '() cps-parse-tree)
-  cps-parse-tree)
+  (annotate-env '() cps-parse-tree))
 
-(define (assoc-arginfo name l)
+(define (find-capture name l)
   (cond
    ((null? l) #f)
-   ((eq? (arginfo-name (caar l)) name) (car l))
-   (else (assoc-arginfo name (cdr l)))))
+   ((eq? (node-get (node-get (car l) 'capture 'arginfo) 'arginfo 'name) name)
+    (car l))
+   (else (find-capture name (cdr l)))))
 
-(define (member-arginfo name l)
+(define (memq-arginfo name l)
   (cond
    ((null? l) #f)
-   ((eq? (arginfo-name (car l)) name) l)
-   (else (member-arginfo name (cdr l)))))
+   ((eq? (node-get (car l) 'arginfo 'name) name) l)
+   (else (memq-arginfo name (cdr l)))))
 
-(define (find-location require-global-entry? lambda-stack varname)
-  (if (null? lambda-stack)
-      varname
-      (let* ((lambda-node (caar lambda-stack))
-	     (args (cdar lambda-stack))
-	     (old-captures (or (node-get-or-false lambda-node 'captures) '()))
-	     (old-globals (or (node-get-or-false lambda-node 'globals) '())))
-	(cond
+(define (find-location lambda-stack varname global-k local-k)
+  (let search-lambda-stack ((require-global-entry? #t)
+			    (lambda-stack lambda-stack)
+			    (global-k global-k)
+			    (local-k local-k))
+    (if (null? lambda-stack)
+	(global-k)
+	(let* ((lambda-node (car lambda-stack))
+	       (formals (node-get lambda-node 'cps-lambda 'formals))
+	       (old-captures (node-get/default! lambda-node 'captures '()))
+	       (old-globals (node-get/default! lambda-node 'globals '())))
+	  (cond
+	   ((find-capture varname old-captures) =>
+	    ;; We've already captured a variable of this name. Return
+	    ;; the location we're storing the captured cell in (and
+	    ;; the captured arginfo).
+	    (lambda (capture-record)
+	      (local-k (node-get capture-record 'capture 'arginfo)
+		       (node-get capture-record 'capture 'new-location))))
 
-	 ((assoc-arginfo varname old-captures) =>
-	  ;; We've already captured a variable of this name. Return
-	  ;; the location we're storing the captured cell in (and
-	  ;; the captured arginfo).
-	  (lambda (cell)
-	    (cons (cadr cell)
-		  (car cell))))
+	   ((memq varname old-globals)
+	    ;; We've already checked, and none of our parents define
+	    ;; or capture this variable - we know it's a global.
+	    (global-k))
 
-	 ((memq varname old-globals)
-	  ;; We've already checked, and none of our parents define
-	  ;; or capture this variable - we know it's a global.
-	  varname)
+	   ((memq-arginfo varname formals) =>
+	    ;; This lambda defines this variable! Return the location
+	    ;; of the argument in this lambda's argument list, as well
+	    ;; as the arginfo structure for the argument, so that we
+	    ;; can later update it with capture/mutation information.
+	    (lambda (memq-tail)
+	      (let ((position (- (length formals)
+				 (length memq-tail))))
+		(local-k (car memq-tail)
+			 (make-node 'loc-argument 'index position)))))
 
-	 ((member-arginfo varname args) =>
-	  ;; This branch of this case-lambda defines this variable!
-	  ;; Return the negative of the ONE-based index of the
-	  ;; argument in our argument list, as well as the arginfo
-	  ;; structure for the argument, so that we can later update
-	  ;; it with capture/mutation information.
-	  (lambda (member-tail)
-	    (let ((position (- (length args)
-			       (length member-tail))))
-	      (cons (- -1 position)
-		    (car member-tail)))))
-
-	 (else
-	  ;; We don't know. Ask our lexically-enclosing scope.
-	  (let ((old-location0 (find-location #f ; we do NOT require an entry for a global
-					      (cdr lambda-stack)
-					      varname)))
-	    (if (pair? old-location0)
-		;; It's a captured variable. Recapture it here.
-		(let* ((old-location (car old-location0))
-		       (arginfo (cdr old-location0))
-		       (new-location (length old-captures)))
-		  (arginfo-capture! arginfo)
-		  (node-set! lambda-node 'lambda 'captures
-			     (cons (list arginfo new-location old-location) old-captures))
-		  (cons new-location
-			arginfo))
-		;; It's a global variable. Insert an entry here only
-		;; if we need to.
-		(begin
-		  (if require-global-entry?
-		      (node-set! lambda-node 'lambda 'globals
-				 (cons varname old-globals)))
-		  varname))))))))
-
-(define (annotate-children lambda-stack node)
-  (for-each (lambda (n) (annotate-env lambda-stack n))
-	    (node-collect-subnodes node (node-child-attr-names node))))
+	   (else
+	    ;; We don't know. Ask our lexically-enclosing scope.
+	    (search-lambda-stack #f ; we do NOT require an entry for a global here
+				 (cdr lambda-stack)
+				 (lambda ()
+				   ;; It's a global variable. Insert an entry here only
+				   ;; if we need to.
+				   (if require-global-entry?
+				       (node-set! lambda-node 'cps-lambda 'globals
+						  (cons varname old-globals)))
+				   (global-k))
+				 (lambda (arginfo old-location)
+				   ;; It's a captured variable. Recapture it here.
+				   (let ((new-location (make-node 'loc-environment
+								  'index (length old-captures))))
+				     (arginfo-capture! arginfo)
+				     (node-set! lambda-node 'cps-lambda 'captures
+						(cons (make-node 'capture
+								 'arginfo arginfo
+								 'old-location old-location
+								 'new-location new-location)
+						      old-captures))
+				     (local-k arginfo new-location))))))))))
 
 (define (annotate-env lambda-stack node)
-  (let ((kind-of-node (node-kind node)))
-    (if (memq kind-of-node '(var set))
-	(let ((location (find-location #t ; we require an entry for a global.
-				       lambda-stack
-				       (node-get node kind-of-node 'name))))
-	  (if (pair? location)
-	      (let ((location (car location))
-		    (arginfo (cdr location)))
-		(if (eq? kind-of-node 'set)
-		    (arginfo-mutate! arginfo))
-		(node-set! node kind-of-node 'location location)
-		(node-set! node kind-of-node 'arginfo arginfo))
-	      (node-set! node kind-of-node 'location location))))
-    (if (eq? kind-of-node 'lambda)
-	(for-each (lambda (arginfos body)
-		    (annotate-env (cons (cons node arginfos) lambda-stack) body))
-		  (node-get node 'lambda 'all-arginfos)
-		  (node-get node 'lambda 'all-bodies))
-	(annotate-children lambda-stack node))))
+  (node-match node
+	      ((cps-var name)
+	       (find-location lambda-stack
+			      name
+			      (lambda () (make-node 'cps-global-get
+						    'name name))
+			      (lambda (arginfo location)
+				(make-node 'cps-local-get
+					   'name name
+					   'arginfo arginfo
+					   'location location))))
+	      ((cps-set name expr)
+	       (let ((expr (annotate-env lambda-stack expr)))
+		 (find-location lambda-stack
+				name
+				(lambda () (make-node 'cps-global-set
+						      'name name
+						      'expr expr))
+				(lambda (arginfo location)
+				  (arginfo-mutate! arginfo)
+				  (make-node 'cps-local-set
+					     'name name
+					     'arginfo arginfo
+					     'location location
+					     'expr expr)))))
+	      ((cps-lambda formals varargs expr)
+	       (node-set! node 'cps-lambda 'expr (annotate-env (cons node lambda-stack) expr))
+	       node)
+	      (else
+	       (node-children-map! cps-child-attrs
+				   (lambda (n) (annotate-env lambda-stack n))
+				   node)
+	       node)))

@@ -13,20 +13,21 @@
 
 ;;; Load compiler modules
 
-(include "tree.scm")
+(include "node.scm")
 
-;;(include "macro.scm")
+(include "macro.scm")
 (include "toplevel.scm")
-(include "parse.scm")
+(include "intdef.scm")
 (include "cps.scm")
 (include "optimize.scm")
 (include "annotate.scm")
+(include "coreeval.scm")
 
 (include "driver.scm")
 
 (define main$debug (make-parameter #f))
 (define main$libpath (make-parameter (list "../lib")))
-(define compiler$without-basic-libraries (make-parameter #f))
+(define compiler$without-basic-libraries (make-parameter #t))
 
 (define (replace-filename-extension filename new-extension)
   (cond
@@ -36,38 +37,37 @@
    (else
     (string-append filename new-extension))))
 
+(define (read-all-sexps port)
+  (let loop ()
+    (let ((expr (read port)))
+      (if (eof-object? expr)
+	  '()
+	  (cons expr (loop))))))
+
 (define compile-file
   (let ((basic-visited #f))
     (lambda (filename)
       (display ";; compile-file compiling ") (display filename) (newline)
-      (let ((exprs (call-with-input-file filename
-		     (lambda (i)
-		       (let loop ()
-			 (let ((expr (read i)))
-			   (if (eof-object? expr)
-			       '()
-			       (cons expr (loop)))))))))
-
-	(if (not basic-visited)
-	    (if (compiler$without-basic-libraries)
-		(sc-expand '(defmacro sys$install-binding (name kind val)
-			      `(%jvm-assemble '(name kind val) (,name ,kind ,val)
-				 '((load "sisc.interpreter.Interpreter" 2)
-				   ($ name)
-				   ($ kind)
-				   ($ val)
-				   (invoke "sisc.newmoon.Util"
-					   "defineGlobal"
-					   "sisc.data.Value"
-					   ("sisc.interpreter.Interpreter"
-					    "sisc.data.Value"
-					    "sisc.data.Value"
-					    "sisc.data.Value")
-					   static)))))
-		(begin
-		  (visit (resolve-library-path "basic-library.scm" '()))
-		  (set! basic-visited #t))))
-
+      (let ((exprs (call-with-input-file filename read-all-sexps)))
+; 	(if (not basic-visited)
+; 	    (if (compiler$without-basic-libraries)
+; 		(macro-expand '(defmacro sys$install-binding (name kind val)
+; 				 `(%jvm-assemble '(name kind val) (,name ,kind ,val)
+; 				    '((load "sisc.interpreter.Interpreter" 2)
+; 				      ($ name)
+; 				      ($ kind)
+; 				      ($ val)
+; 				      (invoke "sisc.newmoon.Util"
+; 					      "defineGlobal"
+; 					      "sisc.data.Value"
+; 					      ("sisc.interpreter.Interpreter"
+; 					       "sisc.data.Value"
+; 					       "sisc.data.Value"
+; 					       "sisc.data.Value")
+; 					      static)))))
+; 		(begin
+; 		  (visit (resolve-library-path "basic-library.scm" '()))
+; 		  (set! basic-visited #t))))
 	(parameterize ((compiler$visit-time '()))
 	  (compiler-back-end-phases filename
 				    (compiler-front-end-phases `(begin ,@exprs)))

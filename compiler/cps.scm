@@ -1,38 +1,37 @@
 (define (head-exprs expr)
   (node-collect-subnodes expr (case (node-kind expr)
-				((lit singleton var lambda) '())
-				((begin) '(head))
-				((apply) '(rator . rands))
-				((if) '(test))
-				((set) '(value))
-				((jvm-assemble) 'actuals)
+				((ds-lit ds-var ds-lambda) '())
+				((ds-apply) '(rator . rands))
+				((ds-begin) '(head))
+				((ds-if) '(test))
+				((ds-set) '(expr))
+				((ds-asm) 'actuals)
 				(else (error "internal-compiler-error"
 					     "unknown node kind in head-exprs:"
 					     expr)))))
 
 (define (tail-exprs expr)
   (node-collect-subnodes expr (case (node-kind expr)
-				((lit singleton var lambda apply set jvm-assemble) '())
-				((begin) '(tail))
-				((if) '(true false))
+				((ds-lit ds-var ds-lambda ds-apply ds-set ds-asm) '())
+				((ds-begin) '(tail))
+				((ds-if) '(true false))
 				(else (error "internal-compiler-error"
 					     "unknown node kind in tail-exprs:"
 					     expr)))))
 
 (define (simple? expr)
-  (and (not (memq (node-kind expr)
-		  '(apply if)))
+  (and (not (memq (node-kind expr) '(ds-apply ds-if)))
        (every simple? (head-exprs expr))
        (every simple? (tail-exprs expr))))
 
 (define (initial-expr expr)
   (let loop ((heads (head-exprs expr)))
     (cond
-     ((null? heads) expr)	  ; expr is its own initial expression
+     ((null? heads) expr)		; expr is its own initial expression
      ((simple? (car heads))
-      (loop (cdr heads)))      ; this head-expr is not an initial-expr
+      (loop (cdr heads)))		; this head-expr is not an initial-expr
      (else
-      (initial-expr (car heads)))))) ; this head-expr may be an initial-expr
+      (initial-expr (car heads))))))	; this head-expr may be an initial-expr
 
 (define (subst-expr expr what with)
   (cond
@@ -42,7 +41,7 @@
     with)
    (else
     (let loop-expr ((expr expr))
-      (let loop-subs ((subs (node-child-attr-names expr)))
+      (let loop-subs ((subs (ds-child-attrs expr)))
 	(cond
 	 ((null? subs))
 	 ((pair? subs)
@@ -61,74 +60,98 @@
 		  (loop-tail (cdr tail)))))))))
     expr)))
 
+(define (make-lambda-cont outer-cont-sym inner-cont-sym node ie)
+  (make-node 'cps-lambda
+	     'formals (list (make-arginfo inner-cont-sym))
+	     'varargs #f
+	     'expr (cps-pushing-transform outer-cont-sym
+					  (subst-expr node ie
+						      (make-node 'ds-var 'name inner-cont-sym)))))
+
 (define (gen-cont-sym) (gensym "CONT"))
 (define (gen-val-sym) (gensym "VAL"))
-
-(define (make-one-armed-lambda argsyms bodynode)
-  (let ((arginfos (map (lambda (argsym) (make-arginfo argsym #f)) argsyms)))
-    (make-lambda (list arginfos)
-		 (list #f)
-		 (list bodynode))))
 
 (define (cps-pushing-transform cont-arg node)
   (cond
    ((simple? node)
-    (make-apply (make-var cont-arg #f)
-		(list (cps-transform node))))
+    (make-node 'cps-apply
+	       'rator (make-node 'cps-var 'name cont-arg)
+	       'rands (list (cps-transform node))))
    (else
     (let ((ie (initial-expr node)))
       (node-match ie
-		  ((begin head tail)
+		  ((ds-begin head tail)
 		   (compiler-assert begin-is-never-another-exprs-head-expr (eq? ie node) ie node)
-		   (make-begin (cps-transform head)
-			       (cps-pushing-transform cont-arg tail)))
-		  ((apply rator rands)
+		   (make-node 'cps-begin
+			      'head (cps-transform head)
+			      'tail (cps-pushing-transform cont-arg tail)))
+		  ((ds-apply rator rands)
 		   (let ((make-call-cps (lambda (the-cont-node)
-					  (make-apply (cps-transform rator)
-						      (cons the-cont-node
-							    (map cps-transform rands))))))
+					  (make-node 'cps-apply
+						     'rator (cps-transform rator)
+						     'rands (cons the-cont-node
+								  (map cps-transform rands))))))
 		     (if (eq? ie node)	; if node is its own init-expr
-			 (make-call-cps (make-var cont-arg #f))
+			 (make-call-cps (make-node 'cps-var 'name cont-arg))
 			 (make-call-cps (let ((cont-val (gen-val-sym)))
-					  (make-one-armed-lambda
-					   (list cont-val)
-					   (cps-pushing-transform
-					    cont-arg
-					    (subst-expr node ie (make-var cont-val #f)))))))))
-		  ((if test true false)
-		   (let ((make-cps-if (lambda (the-cont-var)
-					(make-if (cps-transform test)
-						 (cps-pushing-transform the-cont-var true)
-						 (cps-pushing-transform the-cont-var false)))))
+					  (make-lambda-cont cont-arg cont-val node ie))))))
+		  ((ds-if test true false)
+		   (let ((make-cps-if
+			  (lambda (the-cont-var)
+			    (make-node 'cps-if
+				       'test (cps-transform test)
+				       'true (cps-pushing-transform the-cont-var true)
+				       'false (cps-pushing-transform the-cont-var false)))))
 		     (if (eq? ie node)
 			 (make-cps-if cont-arg)
 			 (let ((the-cont-var (gen-cont-sym))
 			       (the-cont-arg (gen-val-sym)))
-			   (make-apply (make-one-armed-lambda (list the-cont-var)
-							      (make-cps-if the-cont-var))
-				       (list (make-one-armed-lambda
-					      (list the-cont-arg)
-					      (cps-pushing-transform
-					       cont-arg
-					       (subst-expr node
-							   ie
-							   (make-var the-cont-arg #f))))))))))
-		  ((jvm-assemble formals actuals code)
-		   (compiler-assert jvm-assemble-is-always-its-own-head-expr (eq? ie node))
-		   (make-jvm-assemble formals
-				      (map cps-transform actuals)
-				      code))
+			   (make-node 'cps-apply
+				      'rator (make-node 'cps-lambda
+							'formals (list (make-arginfo the-cont-var))
+							'varargs #f
+							'expr (make-cps-if the-cont-var))
+				      'rands (list (make-lambda-cont cont-arg the-cont-arg
+								     node ie)))))))
+		  ((ds-asm formals actuals code)
+		   (compiler-assert assembly-is-always-its-own-head-expr (eq? ie node))
+		   (make-node 'cps-asm
+			      'formals formals
+			      'actuals (map cps-transform actuals)
+			      'code code))
 		  (else
 		   (error "internal-compiler-error"
 			  "invalid initial-expression node-kind; node =" node)))))))
 
 (define (cps-transform node)
   (node-match node
-	      ((lambda all-arginfos all-bodies)
+	      ((ds-lit value) (make-node 'cps-lit 'value value))
+	      ((ds-var name) (make-node 'cps-var 'name name))
+	      ((ds-lambda formals varargs expr)
 	       (let ((cont-arg (gen-cont-sym)))
-		 (map! (lambda (arginfos) (cons (make-arginfo cont-arg #f) arginfos)) all-arginfos)
-		 (map! (lambda (body) (cps-pushing-transform cont-arg body)) all-bodies)))
-	      (else
-	       (for-each cps-transform
-			 (node-collect-subnodes node (node-child-attr-names node)))))
-  node)
+		 (make-node 'cps-lambda
+			    'formals (cons (make-arginfo cont-arg) formals)
+			    'varargs varargs
+			    'expr (cps-pushing-transform cont-arg expr))))
+	      ((ds-apply rator rands)
+	       (make-node 'cps-apply
+			  'rator (cps-transform rator)
+			  'rands (map cps-transform rands)))
+	      ((ds-begin head tail)
+	       (make-node 'cps-begin
+			  'head (cps-transform head)
+			  'tail (cps-transform tail)))
+	      ((ds-if test true false)
+	       (make-node 'cps-if
+			  'test (cps-transform test)
+			  'true (cps-transform true)
+			  'false (cps-transform false)))
+	      ((ds-set name expr)
+	       (make-node 'cps-set
+			  'name name
+			  'expr (cps-transform expr)))
+	      ((ds-asm formals actuals code)
+	       (make-node 'cps-asm
+			  'formals formals
+			  'actuals (map cps-transform actuals)
+			  'code code))))

@@ -1,17 +1,12 @@
-"true" "-*- scheme -*-";CLASSPATH="`dirname "$0"`"/backend/jvm/bcel-5.1.jar:"`dirname "$0"`"/backend/jvm/sisc-newmoon.jar exec env sisc --no-repl --call-with-args newmoon-main "$0" -- "$@"
+"true" "-*- scheme -*-";exec env mzscheme -v -f "$0" -e "(apply newmoon-main (vector->list argv))" -- "$@"
 
-(case-sensitive #t)
-(emit-annotations #t)
-(emit-debugging-symbols #t)
-(repl-prompt ">>> ")
-(stack-trace-on-error #t)
-
-(load "support/sisc.scm")
-(load "main.scm")
-(load "backend/jvm/jvm-backend.scm")
+(parameterize ((current-inspector (make-inspector)))
+  (load "support/mzscheme.scm")
+  (load "main.scm"))
 
 (define (newmoon-main . args)
   (define interactive #f)
+  (define mode 'compiling)
 
   (define (process-argument arg rest)
     (if (< (string-length arg) 2)
@@ -23,6 +18,7 @@
 	  ((#\b) (compiler$without-basic-libraries #t) rest)
 	  ((#\B) (compiler$without-basic-libraries #f) rest)
 	  ((#\i) (set! interactive #t) rest)
+	  ((#\e) (set! mode 'evaluating) rest)
 	  (else
 	   (error "Unknown command-line switch" arg)))))
 
@@ -43,6 +39,11 @@
 						 #\newline))
 			 (interactive-main))))))))
 
+  (define (evaluate-file filename)
+    (let* ((expr `(begin ,@(call-with-input-file filename read-all-sexps))))
+      (pretty-print `(EVALUATING ,expr))
+      (pretty-print `(RESULT ,(core-scheme-eval expr)))))
+
   (let loop ((args args))
     (cond
      ((not (null? args)) (let ((arg (car args))
@@ -51,7 +52,10 @@
 			     ((#\-)
 			      (loop (process-argument arg rest)))
 			     (else
-			      (compile-file arg)
+			      (case mode
+				((compiling) (compile-file arg))
+				((evaluating) (evaluate-file arg))
+				(else (error "Illegal main-driver mode" mode)))
 			      (loop rest)))))
      (interactive (interactive-main))
      (else
