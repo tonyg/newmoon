@@ -1,0 +1,14 @@
+#!/usr/local/bin/mzscheme -r
+; -*- scheme -*-
+
+(require (lib "pretty.ss"))
+
+(parameterize ((pretty-print-columns (if (> (vector-length argv) 1)
+					 (string->number (vector-ref argv 1))
+					 512)))
+  (let ((filename (vector-ref argv 0)))
+    (if (string=? filename "-")
+	(pretty-print (read))
+	(with-input-from-file filename
+	  (lambda ()
+	    (pretty-print (read)))))))

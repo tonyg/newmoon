@@ -1,0 +1,51 @@
+# -*- Makefile -*-
+
+all:: _presubdirs _all _postsubdirs
+
+_presubdirs::
+ifdef SUBDIRS
+	@for loopvar in $(SUBDIRS); \
+	do echo "Making all in $$loopvar..."; \
+	$(MAKE) -s -C $$loopvar all; done
+endif
+
+_postsubdirs::
+ifdef POSTSUBDIRS
+	@for loopvar in $(POSTSUBDIRS); \
+	do echo "Making all in $$loopvar..."; \
+	$(MAKE) -s -C $$loopvar all; done
+endif
+
+_all:: $(TARGETS) $(TARGETS_PRECIOUS)
+
+clean:: _clean
+ifdef SUBDIRS
+	@for loopvar in $(SUBDIRS); \
+	do echo "Making clean in $$loopvar..."; \
+	$(MAKE) -s -C $$loopvar clean; done
+endif
+ifdef POSTSUBDIRS
+	@for loopvar in $(POSTSUBDIRS); \
+	do echo "Making clean in $$loopvar..."; \
+	$(MAKE) -s -C $$loopvar clean; done
+endif
+
+_clean::
+	rm -f $(TARGETS) $(JUNK)
+	rm -f *.scm.sil
+
+%.dll: %.scm
+ifdef DEV_TREE
+	$(DEV_TREE)/compiler/compile1 $<
+else
+	@echo 'Variable $$DEV_TREE not set.'
+	false
+endif
+
+%.exe: %.scm
+ifdef DEV_TREE
+	SIL_FLAGS="$$SIL_FLAGS -x" $(DEV_TREE)/compiler/compile1 $<
+else
+	@echo 'Variable $$DEV_TREE not set.'
+	false
+endif

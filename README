@@ -1,0 +1,47 @@
+This is Newmoon, a very very simple CPS compiler for a language
+asymptotically approaching R5RS Scheme. The compiler currently targets
+just the one backend: Microsoft's CLR ("dotnet"). Previously an ad-hoc
+bytecode machine was targeted; the layering is clean enough that
+retargeting ought to be minimally painful.
+
+In order to run this software, you currently require:
+ - MzScheme 20x
+ - A recent "srfi" (and optionally "schemeunit") collection for MzScheme
+ - A .NET platform
+	- MS .NET
+	- Mono .NET
+	- DotGNU Portable .NET
+ - Cygwin, if you're running on Windows
+
+If you're not using Mono, set the environment variable CSC to point to
+your C# compiler, and CLR to point to your CLR runtime .exe loader. If
+you're using Portable.NET, you might get StackOverflowException unless
+you set, say, CLR="ilrun -S1024" or greater.
+
+This is all the documentation you will find at the moment. More will
+be forthcoming.
+
+This is an extremely alpha piece of software, and it is supplied to
+you under the terms of the GNU LGPL, a full copy of which can be found
+in the file COPYING in this directory.
+
+The relevant copyright notice for the files in this archive follows:
+
+    Newmoon - a simple .NET Scheme compiler
+    Copyright (C) 1999-2003 Tony Garnock-Jones <tonyg@kcbbs.gen.nz>
+    Copyright (C) 2003 LShift Ltd. <query@lshift.net>
+    Copyright (C) 2003 Tom Berger <t.berger@ucl.ac.uk>
+
+    This library is free software; you can redistribute it and/or
+    modify it under the terms of the GNU Lesser General Public
+    License as published by the Free Software Foundation; either
+    version 2.1 of the License, or (at your option) any later version.
+
+    This library is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+    Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
