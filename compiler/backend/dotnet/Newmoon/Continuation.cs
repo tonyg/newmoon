@@ -1,6 +1,9 @@
 using System;
 using System.Collections;
 
+// These are obsolescent; a better approach is to code them directly
+// in cps-value language, and have the backend emit them as real
+// lambdas.
 namespace Newmoon {
     public class Continuation: Closure {
 	private Closure k;
