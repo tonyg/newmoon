@@ -1,0 +1,12 @@
+Introducing a naive "letrec-set" field to the various kinds of "set"
+record turned out to be a bad idea. Making the set that a letrec does
+to stomp on the recursive binding be a "not-really-mutating" set
+causes the backend to assume there's no change, and to emit code that
+copies the dummy-init value around. Sure, there's no box, but also
+there's no linking of any mutually recursive procedures going on. I'll
+think some more about it and revisit it later. It doesn't look like
+it'll be easy to avoid the boxing: the alternative is to go into a
+bunch of environments in lambdas that are already constructed, and
+stomp on their letrec'd bindings. Nasty. Perhaps Kelsey's CPS/SSA
+technique will help here - a little analysis to identify mutually
+recursive /procedures/ could go a long way.
