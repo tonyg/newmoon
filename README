@@ -28,8 +28,8 @@ in the file COPYING in this directory.
 The relevant copyright notice for the files in this archive follows:
 
     Newmoon - a simple .NET Scheme compiler
-    Copyright (C) 1999-2003 Tony Garnock-Jones <tonyg@kcbbs.gen.nz>
-    Copyright (C) 2003 LShift Ltd. <query@lshift.net>
+    Copyright (C) 1999-2005 Tony Garnock-Jones <tonyg@kcbbs.gen.nz>
+    Copyright (C) 2005 LShift Ltd. <query@lshift.net>
     Copyright (C) 2003 Tom Berger <t.berger@ucl.ac.uk>
 
     This library is free software; you can redistribute it and/or
