@@ -23,4 +23,4 @@ Newmoon.dll: NewmoonHighlevel.dll NewmoonLowlevel.dll
 	mv Newmoon.tmp.il Newmoon.il
 	echo '.assembly '"'"'Newmoon'"'"' {} .module Newmoon' >> Newmoon.il
 	$(ILASM) /dll /out:$@ Newmoon.il
-#	rm -f Newmoon.il Newmoon.tmp.il
+	rm -f Newmoon.il Newmoon.tmp.il
