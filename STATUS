@@ -5,3 +5,10 @@ Library = not compiling yet
 The evaluator for the macro system is giving me gyp. Need to gut it
 and replace with a macro-expander/parser that does a decent job. Phase
 separation issues, hello my old friends...
+
+Note that the TailClosure and TailContinuation classes are currently
+not properly tail recursive (for debugging purposes)! To make them
+tail recursive, change the compilation technique for Newmoon.dll to
+include Lowlevel.il, by modifying the Makefile, and remove the
+definitions in the C# code for classes that are now to be provided by
+Lowlevel.il.
