@@ -8,7 +8,7 @@ endif
 all: Newmoon.dll
 
 clean:
-	rm -f Newmoon.dll NewmoonHighlevel.dll NewmoonLowlevel.dll Lowlevel.obj Newmoon.il
+	rm -f Newmoon.dll NewmoonHighlevel.dll NewmoonLowlevel.dll
 
 NewmoonLowlevel.dll: Newmoon/Lowlevel.il
 	$(ILASM) /dll /out:$@ $<

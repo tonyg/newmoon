@@ -75,13 +75,13 @@ namespace Newmoon {
 	    }
 	}
 
-	public Closure InvokeModule(string arg) {
+	public Module InvokeModule(string arg) {
 	    string modpath = Path.ChangeExtension(arg, "dll");
 	    string modname = Path.GetFileNameWithoutExtension(arg);
 	    return InvokeModule(modname, modpath);
 	}
 
-	public Closure InvokeModule(string modname, string modpath) {
+	public Module InvokeModule(string modname, string modpath) {
 	    System.Console.WriteLine("Invoking "+modname+" from "+modpath+"...");
 
 	    if (modules.Contains(modname)) {
@@ -101,12 +101,12 @@ namespace Newmoon {
 	    return InvokeModule(t);
 	}
 
-	public Closure InvokeModule(Type t) {
+	public Module InvokeModule(Type t) {
 	    Newmoon.Environment[] cArgs = new Newmoon.Environment[1] { this };
 	    Type[] cTypes = Type.GetTypeArray(cArgs);
 
 	    Newmoon.Module m = (Newmoon.Module) t.GetConstructor(cTypes).Invoke(cArgs);
-	    return m.GetEntryPoint();
+            return m;
 	}
 
 	public bool ModuleInvoked(string modname) {

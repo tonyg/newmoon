@@ -20,7 +20,12 @@
 		      (locals (%list-of vardef))
 		      (body (%list-of instr))))
 
-    (instr #t)
+    (instr ,(lambda (instr)
+	      (or (symbol? instr)
+		  (string? instr)
+		  (and (pair? instr)
+		       (or (symbol? (car instr))
+			   (every string? instr))))))
     ))
 
 (define *max-non-varargs-arity* 4)
@@ -28,14 +33,16 @@
 (define *il-cont-type* "class [Newmoon]Newmoon.Continuation")
 (define *il-closure-type* "class [Newmoon]Newmoon.Closure")
 (define *il-module-type* "class [Newmoon]Newmoon.Module")
+(define *il-environment-type* "class [Newmoon]Newmoon.Environment")
 (define *il-cell-type* "class [Newmoon]Newmoon.Cell")
 (define *il-list-type* "class [Newmoon]Newmoon.List")
 (define *il-objarray-type* "object[]")
 
-(define *il-wrongargc-ctor* "instance void [Newmoon]Newmoon.WrongArgCount::.ctor(int32, int32, bool, bool)")
-(define *il-schemestring-ctor* "instance void [Newmoon]Newmoon.SchemeString::.ctor(string, bool)")
-(define *il-pair-ctor* "instance void [Newmoon]Newmoon.Pair::.ctor(object, object)")
-(define *il-cell-ctor* "instance void [Newmoon]Newmoon.Cell::.ctor(object)")
+(define *il-wrongargc-ctor* "instance void class [Newmoon]Newmoon.WrongArgCount::.ctor(int32, int32, bool, bool)")
+(define *il-schemestring-ctor* "instance void class [Newmoon]Newmoon.SchemeString::.ctor(string, bool)")
+(define *il-pair-ctor* "instance void class [Newmoon]Newmoon.Pair::.ctor(object, object)")
+(define *il-cell-ctor* "instance void class [Newmoon]Newmoon.Cell::.ctor(object)")
+(define *il-module-ctor* "instance void class [Newmoon]Newmoon.Module::.ctor(string, class [Newmoon]Newmoon.Environment)")
 
 (define *il-undefined-field* "class [Newmoon]Newmoon.Undefined [Newmoon]Newmoon.Undefined::UNDEFINED")
 (define *il-null-field* "class [Newmoon]Newmoon.Null [Newmoon]Newmoon.Null::NULL")
@@ -72,30 +79,36 @@
 			'()
 			(string->list str))))))
 
+(define (string-or-symbol->id strsym)
+  (cond
+   ((string? strsym) strsym)
+   ((symbol? strsym) (symbol->string strsym))
+   (else (error "Non-string-or-symbol in string-or-symbol->id" strsym))))
+
 (define (make-classdef name extends)
   (make-node 'classdef
-	     'name name
+	     'name (string-or-symbol->id name)
 	     'extends extends
 	     'fields '()
 	     'methods '()))
 
 (define (classdef-add-field! classdef name type)
   (let ((fielddef (make-node 'vardef
-			     'name name
+			     'name (string-or-symbol->id name)
 			     'type type)))
     (node-push! classdef 'classdef 'fields fielddef)
     fielddef))
 
 (define (classdef-add-method! classdef name virtual static rettype formals)
   (let ((methdef (make-node 'methdef
-			    'name name
+			    'name (string-or-symbol->id name)
 			    'virtual virtual
 			    'static static
 			    'entrypoint #f
 			    'rettype rettype
 			    'formals (map (lambda (entry)
 					    (make-node 'vardef
-						       'name (car entry)
+						       'name (string-or-symbol->id (car entry))
 						       'type (cadr entry)))
 					  formals)
 			    'locals '()
@@ -105,7 +118,7 @@
 
 (define (add-local! methdef name type)
   (node-push! methdef 'methdef 'locals (make-node 'vardef
-						  'name name
+						  'name (string-or-symbol->id name)
 						  'type type))
   name)
 
@@ -134,6 +147,7 @@
 
 (define (emit-classdef port)
   (lambda (classdef)
+    (check-language classdef 'classdef dotnet-languages type-error)
     (emit port
 	  ".class public auto ansi beforefieldinit "(node-get classdef 'classdef 'name)"\n"
 	  #\tab"extends "(node-get classdef 'classdef 'extends)"\n"
@@ -157,7 +171,11 @@
 	(begin
 	  (emit port #\tab".method public")
 	  (if (node-get methdef 'methdef 'virtual) (emit port " virtual newslot"))
-	  (emit port " hidebysig instance default\n")))
+	  (emit port " hidebysig "
+		(if (string=? (node-get methdef 'methdef 'name) ".ctor")
+		    "specialname rtspecialname "
+		    "")
+		"instance default\n")))
     (emit port
 	  #\tab (node-get methdef 'methdef 'rettype)
 	  " "(node-get methdef 'methdef 'name))
@@ -171,7 +189,7 @@
 	    (emit port #\tab #\tab ".locals init ")
 	    (emit-vardefs port (node-get methdef 'methdef 'locals))
 	    (emit port "\n"))))
-    (emit-instructions port (node-get methdef 'methdef 'body))
+    (emit-instructions port methdef (node-get methdef 'methdef 'body))
     (emit port #\tab"}\n")))
 
 (define (emit-vardefs port formals)
@@ -187,14 +205,35 @@
 	  (emit port type" "name)
 	  (loop (cdr formals) #t)))))
 
-(define (emit-instructions port instrs)
-  (for-each-reverse (lambda (instr)
-		      (emit port #\tab)
-		      (if (or (symbol? instr) (string? instr))
-			  (emit port instr":")
-			  (for-each (lambda (part) (emit port #\tab part)) instr))
-		      (emit port "\n"))
-		    instrs))
+(define (lookup-methdef-formal-index methdef formalname)
+  (let ((formalname (string-or-symbol->id formalname)))
+    (let loop ((index (if (node-get methdef 'methdef 'static) 0 1))
+	       (formals (node-get methdef 'methdef 'formals)))
+      (if (null? formals)
+	  (error "Internal error in assembler: Formal argument not found" formalname)
+	  (let* ((candidate (car formals))
+		 (name (node-get candidate 'vardef 'name)))
+	    (if (string=? name formalname)
+		index
+		(loop (+ index 1) (cdr formals))))))))
+
+(define (emit-instructions port methdef instrs)
+  (define (emit-instruction instr)
+    (cond
+     ((or (symbol? instr) (string? instr))
+      (emit port #\tab instr":\n"))
+     ((and (memq (car instr) '(ldarg starg))
+	   (or (symbol? (cadr instr))
+	       (string? (cadr instr))))
+      (let* ((name (cadr instr))
+	     (index (lookup-methdef-formal-index methdef name)))
+	(emit-instruction `(,(car instr) ,index ,@(cddr instr)
+			    ,(string-append "// "(string-or-symbol->id name))))))
+     (else
+      (emit port #\tab)
+      (for-each (lambda (part) (emit port #\tab part)) instr)
+      (emit port "\n"))))
+  (for-each-reverse emit-instruction instrs))
 
 (define (format-types typelist)
   (string-concatenate (list "("
@@ -514,7 +553,7 @@
        ((vector? value)
 	(let ((len (vector-length value)))
 	  (add-instrs! methdef `((ldc.i4 ,len)
-				 (newarr ,*il-objarray-type*)))
+				 (newarr "object")))
 	  (do ((i 0 (+ i 1)))
 	      ((= i len))
 	    (add-instrs! methdef `((dup)
@@ -641,7 +680,7 @@
 
       (define (build-argvec arity rands)
 	(add-instrs! methdef `((ldc.i4 ,arity)
-			       (newarr ,*il-objarray-type*)))
+			       (newarr "object")))
 	(do ((i 0 (+ i 1))
 	     (rands rands (cdr rands)))
 	    ((= i arity))
@@ -733,6 +772,15 @@
 
       (gen #t node))
 
+    (define (gen-module-constructor)
+      (let ((ctor (classdef-add-method! statics-classdef ".ctor" #f #f "void"
+					`((env ,*il-environment-type*)))))
+	(add-instrs! ctor `((ldarg.0)
+			    (ldstr ,(escape-string assembly-name))
+			    (ldarg env)
+			    (call ,*il-module-ctor*)
+			    (ret)))))
+
     (define (gen-module-entry-point node)
       ;; We're relying here on being handed a cps-lambda node, that is
       ;; a real lambda-proc, not a lambda-cont (or lambda-jump, once
@@ -762,6 +810,7 @@
 
     ;;---------------------------------------------------------------------------
     (for-each display (list ";; dotnet backend compiling to namespace "fq-namespace"\n"))
+    (gen-module-constructor)
     (gen-module-entry-point frontend-result)
 
     (if (compiler$make-program)

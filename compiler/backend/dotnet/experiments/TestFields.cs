@@ -28,4 +28,8 @@ public class A {
     public static System.Type foo() {
         return System.Type.GetTypeFromHandle(typeof(A).TypeHandle);
     }
+
+    static A() {
+        System.Console.WriteLine("Foo!");
+    }
 }

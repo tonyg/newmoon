@@ -5,12 +5,12 @@ using System.Collections;
 
 namespace Newmoon {
     public class Driver {
-	public object vCallScheme(Closure c, object[] args) {
-	    return c.ApplyVarargs(new ToplevelContinuation(), args);
+	public object vCallScheme(Module m, Closure c, object[] args) {
+	    return c.ApplyVarargs(m, new ToplevelContinuation(), args);
 	}
 
-	public object CallScheme(Closure c, params object[] args) {
-	    return vCallScheme(c, args);
+	public object CallScheme(Module m, Closure c, params object[] args) {
+	    return vCallScheme(m, c, args);
 	}
 
 	private static void usage(int exitCode) {
@@ -55,18 +55,19 @@ namespace Newmoon {
 		string modname = Path.GetFileNameWithoutExtension(arg);
 
 		if (!e.ModuleInvoked(modname)) {
-		    d.CallScheme(e.InvokeModule(modname, modpath));
+                    Module m = e.InvokeModule(modname, modpath);
+		    d.CallScheme(m, m.GetEntryPoint());
 		}
 	    }
 
-	    Closure entryPoint = e.InvokeModule(moduleType);
+	    Module entryModule = e.InvokeModule(moduleType);
 
 	    SchemeString[] realArgv = new SchemeString[argv.Length];
 	    for (int i = 0; i < realArgv.Length; i++)
 		realArgv[i] = new SchemeString(argv[i]);
 	    Environment.InstallBinding(null, "argv", "global", realArgv);
 
-	    d.CallScheme(entryPoint);
+	    d.CallScheme(entryModule, entryModule.GetEntryPoint());
 	}
     }
 }
