@@ -35,7 +35,7 @@ namespace Newmoon {
 
 	public static object Sub(object[] args) {
 	    switch (args.Length) {
-	      case 0: throw new WrongArgCount(1, 0, true);
+	      case 0: throw new WrongArgCount(1, 0, true, false);
 	      case 1: return - (int) args[0];
 	      default: {
 		  int acc = (int) args[0] - (int) args[1];
@@ -49,7 +49,7 @@ namespace Newmoon {
 
 	public static object Div(object[] args) {
 	    switch (args.Length) {
-	      case 0: throw new WrongArgCount(1, 0, true);
+	      case 0: throw new WrongArgCount(1, 0, true, false);
 	      case 1: return 1 / (int) args[0];
 	      default: {
 		  int acc = (int) args[0] / (int) args[1];
