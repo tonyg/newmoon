@@ -2,21 +2,25 @@ ifeq ($(CSC),)
 CSC=mcs
 ILASM=ilasm
 AL=al
+DIS=monodis
 endif
 
 all: Newmoon.dll
 
 clean:
-	rm -f Newmoon.dll Newmoon.netmodule _temp.dll Lowlevel.obj
+	rm -f Newmoon.dll NewmoonHighlevel.dll NewmoonLowlevel.dll Lowlevel.obj Newmoon.il
 
-%.obj: Newmoon/%.il
-	$(ILASM) -o $@ -j $<
+NewmoonLowlevel.dll: Newmoon/Lowlevel.il
+	$(ILASM) /dll /out:$@ $<
 
-_temp.dll: Lowlevel.obj
-	$(AL) -o $@ -d $<
+NewmoonHighlevel.dll: Newmoon/*.cs NewmoonLowlevel.dll
+	$(CSC) /debug /t:library /out:$@ Newmoon/*.cs /r:NewmoonLowlevel.dll
 
-Newmoon.netmodule: Newmoon/*.cs _temp.dll
-	$(CSC) /debug /t:module /out:$@ Newmoon/*.cs /r:_temp.dll
-
-Newmoon.dll: Newmoon.netmodule Lowlevel.obj
-	$(AL) -o $@ -d $^
+Newmoon.dll: NewmoonHighlevel.dll NewmoonLowlevel.dll
+	$(DIS) NewmoonHighlevel.dll > Newmoon.il
+	$(DIS) NewmoonLowlevel.dll >> Newmoon.il
+	cat Newmoon.il | sed -e 's/NewmoonHighlevel/Newmoon/g' -e 's/NewmoonLowlevel/Newmoon/g' > Newmoon.tmp.il
+	mv Newmoon.tmp.il Newmoon.il
+	echo '.assembly '"'"'Newmoon'"'"' {} .module Newmoon' >> Newmoon.il
+	$(ILASM) /dll /out:$@ Newmoon.il
+#	rm -f Newmoon.il Newmoon.tmp.il

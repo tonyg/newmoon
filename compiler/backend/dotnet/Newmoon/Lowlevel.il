@@ -1,14 +1,18 @@
+.assembly 'NewmoonLowlevel' {}
+.assembly extern mscorlib {}
+
 .namespace Newmoon
 {
 
 .class public auto ansi abstract beforefieldinit Closure
-       extends object
+       extends [mscorlib]System.Object
 {
 	.method public hidebysig specialname rtspecialname instance default
 	void .ctor() cil managed
 	{
 		ldarg.0
-		tail.call	instance void object::.ctor()
+		tail.
+		call	instance void object::.ctor()
 		ret
 	}
 
@@ -18,7 +22,8 @@
 		ldarg.0
 		ldc.i4		0
 		newarr		object
-		tail.callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
+		tail.
+		callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
 		ret
 	}
 
@@ -31,7 +36,8 @@
 		dup
 		ldarg.1
 		stelem.ref
-		tail.callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
+		tail.
+		callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
 		ret
 	}
 
@@ -47,7 +53,8 @@
 		dup
 		ldarg.2
 		stelem.ref
-		tail.callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
+		tail.
+		callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
 		ret
 	}
 
@@ -66,7 +73,8 @@
 		dup
 		ldarg.3
 		stelem.ref
-		tail.callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
+		tail.
+		callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
 		ret
 	}
 
@@ -88,7 +96,8 @@
 		dup
 		ldarg		4
 		stelem.ref
-		tail.callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
+		tail.
+		callvirt	instance object class Newmoon.Closure::ApplyVarargs(class Newmoon.Closure, object[])
 		ret
 	}
 
@@ -105,7 +114,8 @@
 	void .ctor() cil managed
 	{
 		ldarg.0
-		tail.call	instance void object::.ctor()
+		tail.
+		call	instance void object::.ctor()
 		ret
 	}
 

@@ -45,7 +45,7 @@
 (define *il-apply-varargs-method* "object class [Newmoon]Newmoon.Closure::ApplyVarargs(class [Newmoon]Newmoon.Module, class [Newmoon]Newmoon.Continuation, object[])")
 (define *il-lookup-global-method* "class [Newmoon]Newmoon.Cell class [Newmoon]Newmoon.Module::LookupGlobalBinding(string)")
 
-(define *il-get-type-from-handle-method* "void [mscorlib]System.Type::GetTypeFromHandle(class [mscorlib]System.RuntimeTypeHandle)")
+(define *il-get-type-from-handle-method* "class [mscorlib]System.Type class [mscorlib]System.Type::GetTypeFromHandle(valuetype [mscorlib]System.RuntimeTypeHandle)")
 (define *il-program-entry-point-method* "void [Newmoon]Newmoon.Driver::ProgramEntryPoint(string[], class [mscorlib]System.Type)")
 
 (define (make-counter receiver)
@@ -281,7 +281,7 @@
 	 (assembly-name (replace-filename-extension input-filename ""))
 	 (fq-namespace (string-append "Newmoon.CompiledModules."(mangle-id assembly-name)))
 	 (output-filename (replace-filename-extension input-filename ".il"))
-	 (statics-classdef (make-classdef "Statics" "[mscorlib]System.Object"))
+	 (statics-classdef (make-classdef "Statics" "[Newmoon]Newmoon.Module"))
 	 (statics-classname (string-append "class "fq-namespace".Statics"))
 	 (literal-table (make-hash-table 'equal))
 	 (global-table (make-hash-table))
@@ -740,10 +740,15 @@
       (compiler-assert module-entry-point-is-lambda-proc
 		       (and (node-kind? node 'cps-lambda)
 			    (node-get node 'cps-lambda 'cont)))
-      (let ((entry (classdef-add-method! statics-classdef "GetEntryPoint" #f #t *il-closure-type*
-					 `((module ,*il-module-type*)))))
-	(gen-node entry statics-classname '() node)
-	(add-instr! entry '(ret))))
+      ;; It also has to have no captures.
+      (compiler-assert module-entry-point-has-no-captures
+		       (null? (node-get node 'cps-lambda 'captures)))
+      (let ((entry (classdef-add-method! statics-classdef "GetEntryPoint" #t #f *il-closure-type*
+					 '()))
+	    (ctor-token (build-closure node)))
+	(add-instrs! entry `((ldarg.0) ;; this == module
+			     (newobj "instance void" ,ctor-token)
+			     (ret)))))
 
     (define (gen-program-entry-point)
       (let ((entry (classdef-add-method! statics-classdef "Main" #f #t "void"

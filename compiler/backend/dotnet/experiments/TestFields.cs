@@ -24,4 +24,8 @@ public class A {
 	    return b * 600;
 	}
     }
+
+    public static System.Type foo() {
+        return System.Type.GetTypeFromHandle(typeof(A).TypeHandle);
+    }
 }
