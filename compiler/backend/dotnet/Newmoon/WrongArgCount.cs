@@ -6,8 +6,9 @@ namespace Newmoon {
 	public readonly int expected;
 	public readonly int got;
 
-	public WrongArgCount(int expected, int got, bool atLeast)
-	    : base("Wrong argument count: expected "+(atLeast?"at least ":"")+
+	public WrongArgCount(int expected, int got, bool atLeast, bool isContinuation)
+	    : base("Wrong "+(isContinuation?"result":"argument")+
+		   " count: expected "+(atLeast?"at least ":"")+
 		   expected+", but got "+got)
 	{
 	    this.expected = expected;

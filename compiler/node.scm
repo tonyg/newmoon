@@ -82,7 +82,8 @@
 	((%list-of) (and (list? node)
 			 (every (lambda (n) (validate n (cadr type))) node)))
 	(else
-	 (and (eq? (car type) (node-kind node))
+	 (and (node? node)
+	      (eq? (car type) (node-kind node))
 	      (let loop ((type-fields (cdr type)))
 		(or (null? type-fields)
 		    (let* ((expected-field-name (caar type-fields))

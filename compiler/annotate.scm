@@ -26,6 +26,7 @@
     (if (null? lambda-stack)
 	(global-k)
 	(let* ((lambda-node (car lambda-stack))
+	       (cont (node-get lambda-node 'cps-lambda 'cont))
 	       (formals (node-get lambda-node 'cps-lambda 'formals))
 	       (old-captures (node-get/default! lambda-node 'captures '()))
 	       (old-globals (node-get/default! lambda-node 'globals '())))
@@ -42,6 +43,12 @@
 	    ;; We've already checked, and none of our parents define
 	    ;; or capture this variable - we know it's a global.
 	    (global-k))
+
+	   ((and cont (eq? (node-get cont 'arginfo 'name) varname))
+	    ;; This refers to our continuation argument, which acts
+	    ;; more-or-less like a normal local.
+	    (local-k cont
+		     (make-node 'loc-continuation)))
 
 	   ((memq-arginfo varname formals) =>
 	    ;; This lambda defines this variable! Return the location
@@ -104,7 +111,7 @@
 					     'arginfo arginfo
 					     'location location
 					     'expr expr)))))
-	      ((cps-lambda formals varargs expr)
+	      ((cps-lambda cont formals varargs expr)
 	       (node-set! node 'cps-lambda 'expr (annotate-env (cons node lambda-stack) expr))
 	       node)
 	      (else

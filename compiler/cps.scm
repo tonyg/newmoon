@@ -62,7 +62,8 @@
 
 (define (make-lambda-cont outer-cont-sym inner-cont-sym node ie)
   (make-node 'cps-lambda
-	     'formals (list (make-arginfo inner-cont-sym))
+	     'cont #f
+	     'formals (list (make-arginfo #f inner-cont-sym))
 	     'varargs #f
 	     'expr (cps-pushing-transform outer-cont-sym
 					  (subst-expr node ie
@@ -75,6 +76,7 @@
   (cond
    ((simple? node)
     (make-node 'cps-apply
+	       'cont #t
 	       'rator (make-node 'cps-var 'name cont-arg)
 	       'rands (list (cps-transform node))))
    (else
@@ -88,6 +90,7 @@
 		  ((ds-apply rator rands)
 		   (let ((make-call-cps (lambda (the-cont-node)
 					  (make-node 'cps-apply
+						     'cont #f
 						     'rator (cps-transform rator)
 						     'rands (cons the-cont-node
 								  (map cps-transform rands))))))
@@ -107,8 +110,11 @@
 			 (let ((the-cont-var (gen-cont-sym))
 			       (the-cont-arg (gen-val-sym)))
 			   (make-node 'cps-apply
+				      'cont #t
 				      'rator (make-node 'cps-lambda
-							'formals (list (make-arginfo the-cont-var))
+							'cont #f
+							'formals (list (make-arginfo #f
+										     the-cont-var))
 							'varargs #f
 							'expr (make-cps-if the-cont-var))
 				      'rands (list (make-lambda-cont cont-arg the-cont-arg
@@ -131,11 +137,13 @@
 	      ((ds-lambda formals varargs expr)
 	       (let ((cont-arg (gen-cont-sym)))
 		 (make-node 'cps-lambda
-			    'formals (cons (make-arginfo cont-arg) formals)
+			    'cont (make-arginfo #t cont-arg)
+			    'formals formals
 			    'varargs varargs
 			    'expr (cps-pushing-transform cont-arg expr))))
 	      ((ds-apply rator rands)
 	       (make-node 'cps-apply
+			  'cont #f
 			  'rator (cps-transform rator)
 			  'rands (map cps-transform rands)))
 	      ((ds-begin head tail)

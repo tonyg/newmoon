@@ -8,7 +8,14 @@
     (assembly (%list-of (backend-asm (name ,symbol?) (code #t))))
 
     (arginfo
-     (arginfo (name ,symbol?) (captured ,boolean?) (mutated ,boolean?) (is-rest ,boolean?)))
+     (arginfo (name ,symbol?)
+	      (cont ,boolean?)
+	      (captured ,boolean?)
+	      (mutated ,boolean?)
+	      (is-rest ,boolean?)))
+
+    (opt-arginfo
+     (%or ,not arginfo))
 
     (core-scheme
      (%or
@@ -42,7 +49,10 @@
       (cps-lit (value #t))
       (cps-void)
       (cps-var (name ,symbol?))
-      (cps-lambda (formals (%list-of arginfo)) (varargs ,boolean?) (expr cps-exp))
+      (cps-lambda (cont opt-arginfo)
+		  (formals (%list-of arginfo))
+		  (varargs ,boolean?)
+		  (expr cps-exp))
       (cps-asm (formals (%list-of ,symbol?)) (actuals (%list-of cps-value)) (code assembly))
       (cps-set (name ,symbol?) (expr cps-value))
 
@@ -52,13 +62,14 @@
 
     (cps-exp
      (%or
-      (cps-apply (rator cps-value) (rands (%list-of cps-value)))
+      (cps-apply (cont ,boolean?) (rator cps-value) (rands (%list-of cps-value)))
       (cps-begin (head cps-value) (tail cps-exp))
       (cps-if (test cps-value) (true cps-exp) (false cps-exp))
       ))
 
     (local-location
      (%or
+      (loc-continuation)
       (loc-argument (index ,number?))
       (loc-environment (index ,number?))))
 
@@ -71,7 +82,8 @@
       (cps-void)
       (cps-local-get (name ,symbol?) (arginfo arginfo) (location local-location))
       (cps-global-get (name ,symbol?))
-      (cps-lambda (formals (%list-of arginfo))
+      (cps-lambda (cont opt-arginfo)
+		  (formals (%list-of arginfo))
 		  (varargs ,boolean?)
 		  (captures (%list-of capture-record))
 		  (globals (%list-of ,symbol?))
@@ -86,7 +98,7 @@
 
     (cps2-exp
      (%or
-      (cps-apply (rator cps2-value) (rands (%list-of cps2-value)))
+      (cps-apply (cont ,boolean?) (rator cps2-value) (rands (%list-of cps2-value)))
       (cps-begin (head cps2-value) (tail cps2-exp))
       (cps-if (test cps2-value) (true cps2-exp) (false cps2-exp))
       ))

@@ -5,20 +5,18 @@
 
     (classdef (classdef (name id)
 			(extends type)
-			(fields (%list-of fielddef))
+			(fields (%list-of vardef))
 			(methods (%list-of methdef))))
 
-    (fielddef (fielddef (name id)
-			(type type)))
-
-    (argdef (argdef (name id)
+    (vardef (vardef (name id)
 		    (type type)))
 
     (methdef (methdef (name id)
 		      (virtual ,boolean?)
 		      (static ,boolean?)
 		      (rettype type)
-		      (formals (%list-of argdef))
+		      (formals (%list-of vardef))
+		      (locals (%list-of vardef))
 		      (body (%list-of instr))))
 
     (instr #t)
@@ -26,9 +24,24 @@
 
 (define *max-non-varargs-arity* 4)
 
+(define *il-cont-type* "class [Newmoon]Newmoon.Continuation")
 (define *il-closure-type* "class [Newmoon]Newmoon.Closure")
 (define *il-module-type* "class [Newmoon]Newmoon.Module")
+(define *il-cell-type* "class [Newmoon]Newmoon.Cell")
 (define *il-objarray-type* "object[]")
+
+(define *il-wrongargc-ctor* "instance void [Newmoon]Newmoon.WrongArgCount::.ctor(int32, int32, bool, bool)")
+(define *il-schemestring-ctor* "instance void [Newmoon]Newmoon.SchemeString::.ctor(string, bool)")
+(define *il-pair-ctor* "instance void [Newmoon]Newmoon.Pair::.ctor(object, object)")
+(define *il-cell-ctor* "instance void [Newmoon]Newmoon.Cell::.ctor(object)")
+
+(define *il-undefined-field* "[Newmoon]Newmoon.Undefined [Newmoon]Newmoon.Undefined::UNDEFINED")
+(define *il-null-field* "[Newmoon]Newmoon.Null [Newmoon]Newmoon.Null::NULL")
+(define *il-cell-value-field* "object [Newmoon]Newmoon.Cell::value")
+
+(define *il-reply-varargs-method* "object class [Newmoon]Newmoon.Continuation::ReplyVarargs(class [Newmoon]Newmoon.Module, object[])")
+(define *il-apply-varargs-method* "object class [Newmoon]Newmoon.Closure::ApplyVarargs(class [Newmoon]Newmoon.Module, class [Newmoon]Newmoon.Continuation, object[])")
+(define *il-lookup-global-method* "class [Newmoon]Newmoon.Cell class [Newmoon]Newmoon.Module::LookupGlobalBinding(string)")
 
 (define (make-counter receiver)
   (let ((counter 0))
@@ -61,6 +74,13 @@
 	     'fields '()
 	     'methods '()))
 
+(define (classdef-add-field! classdef name type)
+  (let ((fielddef (make-node 'vardef
+			     'name name
+			     'type type)))
+    (node-push! classdef 'classdef 'fields fielddef)
+    fielddef))
+
 (define (classdef-add-method! classdef name virtual static rettype formals)
   (let ((methdef (make-node 'methdef
 			    'name name
@@ -68,13 +88,20 @@
 			    'static static
 			    'rettype rettype
 			    'formals (map (lambda (entry)
-					    (make-node 'argdef
+					    (make-node 'vardef
 						       'name (car entry)
 						       'type (cadr entry)))
 					  formals)
+			    'locals '()
 			    'body '())))
     (node-push! classdef 'classdef 'methods methdef)
     methdef))
+
+(define (add-local! methdef name type)
+  (node-push! methdef 'methdef 'locals (make-node 'vardef
+						  'name name
+						  'type type))
+  name)
 
 (define (add-instr! methdef instr)
   (node-push! methdef 'methdef 'body instr))
@@ -96,22 +123,25 @@
 	".assembly extern Newmoon {}\n"
 	"\n"))
 
+(define (for-each-reverse fn lst)
+  (for-each fn (reverse lst)))
+
 (define (emit-classdef port)
   (lambda (classdef)
     (emit port
 	  ".class public auto ansi beforefieldinit "(node-get classdef 'classdef 'name)"\n"
 	  #\tab"extends "(node-get classdef 'classdef 'extends)"\n"
 	  "{\n")
-    (for-each (emit-fielddef port) (node-get classdef 'classdef 'fields))
-    (for-each (emit-methdef port) (node-get classdef 'classdef 'methods))
+    (for-each-reverse (emit-fielddef port) (node-get classdef 'classdef 'fields))
+    (for-each-reverse (emit-methdef port) (node-get classdef 'classdef 'methods))
     (emit port
 	  "}\n\n")))
 
 (define (emit-fielddef port)
   (lambda (fielddef)
     (emit port
-	  #\tab".field public "(node-get fielddef 'fielddef 'type)" "
-	  (node-get fielddef 'fielddef 'name)"\n")))
+	  #\tab".field public "(node-get fielddef 'vardef 'type)" "
+	  (node-get fielddef 'vardef 'name)"\n")))
 
 (define (emit-methdef port)
   (lambda (methdef)
@@ -125,32 +155,106 @@
     (emit port
 	  #\tab (node-get methdef 'methdef 'rettype)
 	  " "(node-get methdef 'methdef 'name))
-    (emit-formals port (node-get methdef 'methdef 'formals))
+    (emit-vardefs port (node-get methdef 'methdef 'formals))
     (emit port "\n"#\tab"cil managed\n"#\tab"{\n")
+    (let ((locals (node-get methdef 'methdef 'locals)))
+      (if (not (null? locals))
+	  (begin
+	    (emit port #\tab #\tab ".locals init ")
+	    (emit-vardefs port (node-get methdef 'methdef 'locals))
+	    (emit port "\n"))))
     (emit-instructions port (node-get methdef 'methdef 'body))
     (emit port #\tab"}\n")))
 
-(define (emit-formals port formals)
+(define (emit-vardefs port formals)
   (emit port "(")
   (let loop ((formals formals)
 	     (need-comma #f))
     (if (null? formals)
 	(emit port ")")
 	(let* ((formal (car formals))
-	       (type (node-get formal 'argdef 'type))
-	       (name (node-get formal 'argdef 'name)))
+	       (type (node-get formal 'vardef 'type))
+	       (name (node-get formal 'vardef 'name)))
 	  (if need-comma (emit port ", "))
 	  (emit port type" "name)
 	  (loop (cdr formals) #t)))))
 
 (define (emit-instructions port instrs)
-  (for-each (lambda (instr)
-	      (emit port #\tab)
-	      (if (or (symbol? instr) (string? instr))
-		  (emit port instr":")
-		  (for-each (lambda (part) (emit port #\tab part)) instr))
-	      (emit port "\n"))
-	    (reverse instrs)))
+  (for-each-reverse (lambda (instr)
+		      (emit port #\tab)
+		      (if (or (symbol? instr) (string? instr))
+			  (emit port instr":")
+			  (for-each (lambda (part) (emit port #\tab part)) instr))
+		      (emit port "\n"))
+		    instrs))
+
+(define (format-types typelist)
+  (string-concatenate (list "("
+			    (reduce-right (lambda (a b) (string-append a", "b)) "" typelist)
+			    ")")))
+
+(define (arginfo->id arginfo)
+  (mangle-id (node-get arginfo 'arginfo 'name)))
+
+(define (formals->argdefs formals)
+  (map (lambda (arginfo) (list (arginfo->id arginfo) "object")) formals))
+
+(define (capture-index capture)
+  (node-get (node-get capture 'capture 'new-location) 'loc-environment 'index))
+
+(define (gen-capture-fields! classdef captures)
+  (map (lambda (capture)
+	 (let* ((arginfo (node-get capture 'capture 'arginfo)))
+	   (let* ((index (capture-index capture))
+		  (field (classdef-add-field! classdef
+					      (string-append "env_"(number->string index)"_"
+							     (arginfo->id arginfo))
+					      (capture-type capture))))
+	     (cons index (node-get field 'vardef 'name)))))
+       captures))
+
+(define (global->fieldname global)
+  (string-append "global_"(mangle-id global)))
+
+(define (capture-index->name index capture-map)
+  (cdr (assq index capture-map)))
+
+(define (capture-cont? capture)
+  (node-get (node-get capture 'capture 'arginfo) 'arginfo 'cont))
+
+(define (capture-type capture)
+  (if (capture-cont? capture) *il-cont-type* "object"))
+
+(define (capture-source-arg-for-index index)
+  (string-append "cap_"(number->string index)))
+
+(define (capture-source-args captures)
+  (map (lambda (capture)
+	 (list (capture-source-arg-for-index (capture-index capture))
+	       (capture-type capture)))
+       captures))
+
+(define (zero-pad-left str width)
+  (let ((delta (- width (string-length str))))
+  (cond
+   ((negative? delta) (error "Numeric string too wide in zero-pad-left" (list str width)))
+   ((zero? delta) str)
+   (else (string-append (make-string delta #\0) str)))))
+
+(define (escape-string str)
+  (list->string
+   (cons #\"
+	 (fold-right (lambda (ch acc)
+		       (let ((i (char->integer ch)))
+			 (if (or (< i 32) (>= i 128)) ;; assume ASCII %%%
+			     (append '(#\\)
+				     (string->list (zero-pad-left (number->string i 8) 3))
+				     acc)
+			     (if (char=? ch #\")
+				 (cons* #\\ #\" acc)
+				 (cons ch acc)))))
+		     '(#\")
+		     (string->list str)))))
 
 (define (compiler-back-end-phases input-filename frontend-result)
   (let* ((next-lambda-name (make-counter (lambda (c) (string-append "Lambda_" (number->string c)))))
@@ -173,65 +277,371 @@
     (define (record-generated-class! classdef)
       (set! all-classdefs (cons classdef all-classdefs)))
 
-    (define (gen-closure parenttype node)
-      (let* ((formals (node-get node 'cps-lambda 'formals))
+    (define (build-closure node)
+      (let* ((cont (node-get node 'cps-lambda 'cont))
+	     (is-continuation (not cont)) ;; no continuation arg --> we *are* a continuation
+	     (formals (node-get node 'cps-lambda 'formals))
 	     (captures (node-get node 'cps-lambda 'captures))
 	     (num-captures (length captures))
 	     (varargs (node-get node 'cps-lambda 'varargs))
 	     (globals (node-get node 'cps-lambda 'globals))
 	     (expr (node-get node 'cps-lambda 'expr))
 	     (arity (let ((fl (length formals))) (if varargs (- fl 1) fl)))
-	     (supertype "[Newmoon]Newmoon.Closure")
+	     (supertype (if is-continuation
+			    "[Newmoon]Newmoon.Continuation"
+			    "[Newmoon]Newmoon.Closure"))
 	     (lambdaname (next-lambda-name))
 	     (lambdatype (qualify-class lambdaname))
-	     (classdef (make-classdef lambdaname supertype)))
+	     (classdef (make-classdef lambdaname supertype))
+	     (capture-map (gen-capture-fields! classdef captures))
+	     (ctor-formals (cons `(module ,*il-module-type*) (capture-source-args captures))))
 
-	(define (gen-fixed-low-arity)
-	  (let ((applyv (classdef-add-method! classdef "ApplyVarargs" #t #f "object"
-					      `((k ,*il-closure-type*)
-						(args ,*il-objarray-type*)))))
-	    ;;(add-instrs! 
-	    'dummy))
-
-	(define (gen-fixed-high-arity)
-	  (let ((applyv (classdef-add-method! classdef "ApplyVarargs" #t #f "object"
-					      `((k ,*il-closure-type*)
-						(args ,*il-objarray-type*)))))
-	    ;;(add-instrs! 
+	(define (gen-fixed-arity)
+	  (let ((applyv (classdef-add-method! classdef
+					      (if is-continuation
+						  "ReplyVarargs"
+						  "ApplyVarargs")
+					      #t #f "object"
+					      (if is-continuation
+						  `((module ,*il-module-type*)
+						    (args ,*il-objarray-type*))
+						  `((module ,*il-module-type*)
+						    (k ,*il-cont-type*)
+						    (args ,*il-objarray-type*))))))
+	    (add-instrs! applyv
+			 `((ldarg args)
+			   (ldlen)
+			   (ldc.i4 ,arity)
+			   (bne.un wrongArity)
+			   ,@(if is-continuation
+				 '()
+				 '((ldarg k)))))
+	    (do ((i 0 (+ i 1)))
+		((= i arity))
+	      (add-instrs! applyv
+			   `((ldarg args)
+			     (ldc.i4 ,i)
+			     (ldelem.ref))))
+	    (add-instrs! applyv
+			 `((tail.)
+			   ,(if is-continuation
+				`(call ,(string-append
+					 "object "lambdatype"::Reply"
+					 (format-types (cons *il-module-type*
+							     (make-list arity "object")))))
+				`(call ,(string-append
+					 "object "lambdatype"::Apply"
+					 (format-types (cons* *il-module-type*
+							      *il-cont-type*
+							      (make-list arity "object"))))))
+			   (ret)
+			   wrongArity
+			   (ldc.i4 ,arity)
+			   (ldarg args)
+			   (ldlen)
+			   (ldc.i4 0)
+			   (ldc.i4 ,(if is-continuation 1 0))
+			   (newobj ,*il-wrongargc-ctor*)
+			   (throw))))
+	  (let ((applyn (classdef-add-method! classdef
+					      (if is-continuation "Reply" "Apply")
+					      #t #f "object"
+					      (cons `(module ,*il-module-type*)
+						    (if is-continuation
+							(formals->argdefs formals)
+							(cons `(k ,*il-cont-type*)
+							      (formals->argdefs formals)))))))
+	    (for-each (lambda (arginfo)
+			(if (arginfo-boxed? arginfo)
+			    (begin
+			      (compiler-assert continuation-arginfo-never-boxed
+					       (not (node-get arginfo 'arginfo 'cont)))
+			      (add-instrs! applyn `((ldarg ,(arginfo->id arginfo))
+						    (newobj ,*il-cell-ctor*)
+						    (starg ,(arginfo->id arginfo)))))))
+		      formals)
+	    (gen-node applyn lambdatype capture-map expr)
 	    'dummy))
 
 	(define (gen-variable-arity)
 	  (let ((applyv (classdef-add-method! classdef "ApplyVarargs" #t #f "object"
-					      `((k ,*il-closure-type*)
-						(args ,*il-objarray-type*)))))
-	    ;;(add-instrs! 
-	    'dummy))
-
-	(compiler-assert root-lambda-no-captures (or parenttype
-						     (zero? num-captures)))
-
-	(let ((ctor (classdef-add-method! classdef ".ctor" #f #f "void"
-					  (if parenttype
 					      `((module ,*il-module-type*)
-						(oldenv ,parenttype))
-					      `((module ,*il-module-type*))))))
+						(k ,*il-cont-type*)
+						(args ,*il-objarray-type*)))))
+	    (add-instr! applyv '("// gen-variable-arity %%%%%%"))))
+
+	(let ((ctor (classdef-add-method! classdef ".ctor" #f #f "void" ctor-formals)))
 	  (add-instrs! ctor `((ldarg.0)
-			      (call "instance void object::.ctor()")))
-	  (add-instr! ctor '("// compute captures %%%%%%"))
+			      (ldarg module)
+			      (call ,(string-append "instance void "supertype
+						    "::.ctor("*il-module-type*")"))))
+	  (for-each (lambda (global)
+		      (let ((fieldname (global->fieldname global)))
+			(classdef-add-field! classdef 
+					     (global->fieldname global)
+					     *il-cell-type*)
+			(add-instrs! ctor `((ldarg.0)
+					    (ldarg module)
+					    (ldstr ,(escape-string (symbol->string global)))
+					    (call ,*il-lookup-global-method*)
+					    (stfld ,(string-append *il-cell-type*" "lambdatype
+								   "::"fieldname))))))
+		    globals)
+	  (for-each (lambda (capture)
+		      (let* ((cap-cont (node-get (node-get capture 'capture 'arginfo)
+						 'arginfo 'cont))
+			     (index (capture-index capture)))
+			(add-instrs! ctor `((ldarg.0)
+					    (ldarg ,(capture-source-arg-for-index index))
+					    (stfld ,(string-append
+						     (if cap-cont *il-cont-type* "object")
+						     lambdatype"::"
+						     (capture-index->name index capture-map)))))))
+		    captures)
 	  (add-instr! ctor '(ret)))
 
-	(if (and (<= arity *max-non-varargs-arity*) (not varargs))
-	    (gen-fixed-low-arity)
-	    (if varargs
-		(gen-variable-arity)
-		(gen-fixed-high-arity)))
+	(if varargs
+	    (gen-variable-arity)
+	    (gen-fixed-arity))
 
 	(record-generated-class! classdef)
-	lambdatype))
+	(string-append lambdatype"::.ctor"(format-types (map cadr ctor-formals)))))
+
+    (define (gen-literal methdef value)
+      (cond
+       ((number? value) (if (and (exact? value)
+				 (integer? value))
+			    (add-instrs! methdef `((ldc.i4 ,value)
+						   (box "int32")))
+			    (add-instrs! methdef `((ldc.r8 ,value)
+						   (box "float64")))))
+       ((symbol? value) (add-instr! methdef `(ldstr ,(escape-string (symbol->string value)))))
+       ((string? value) (add-instrs! methdef `((ldstr ,(escape-string value))
+					       (ldc.i4 0)
+					       (newobj ,*il-schemestring-ctor*))))
+       ((boolean? value) (add-instrs! methdef `((ldc.i4 ,(if value 1 0))
+						(box "bool"))))
+       ((char? value) (add-instrs! methdef `((ldc.i4 ,(char->integer value))
+					     (box "char"))))
+       ((null? value) (add-instr! methdef
+				  `(ldsfld ,*il-null-field*)))
+       ((pair? value)
+	(gen-literal methdef (car value))
+	(gen-literal methdef (cdr value))
+	(add-instr! methdef `(newobj ,*il-pair-ctor*)))
+       ((vector? value)
+	(let ((len (vector-length value)))
+	  (add-instrs! methdef `((ldc.i4 ,len)
+				 (newarr ,*il-objarray-type*)))
+	  (do ((i 0 (+ i 1)))
+	      ((= i len))
+	    (add-instrs! methdef `((dup)
+				   (ldc.i4 ,i)))
+	    (gen-literal methdef (vector-ref value i))
+	    (add-instr! methdef '(stelem.ref)))))
+       (else
+	(error "gen-literal: unimplemented literal kind" value))))
+
+    (define (gen-node methdef lambdatype capture-map node)
+      ;; Perhaps need a headposition/tailposition indicator, so that
+      ;; we don't generate redundant computations?
+      (define (gen-void)
+	(add-instr! methdef
+		    `(ldsfld ,*il-undefined-field*)))
+
+      (define (gen-local-load arginfo location)
+	(node-match location
+		    ((loc-continuation)
+		     (add-instr! methdef `(ldarg k)))
+		    ((loc-argument index)
+		     (add-instr! methdef `(ldarg ,(arginfo->id arginfo))))
+		    ((loc-environment index)
+		     (add-instrs! methdef `((ldarg.0)
+					    (ldfld ,(string-append "object "lambdatype"::"
+								   (capture-index->name
+								    index capture-map))))))))
+
+      (define (gen-local-store arginfo location expr-thunk)
+	(node-match location
+		    ((loc-continuation)
+		     (add-instr! methdef `(starg k)))
+		    ((loc-argument index)
+		     (add-instr! methdef `(starg ,(arginfo->id arginfo))))
+		    ((loc-environment index)
+		     (add-instr! methdef `(ldarg.0))
+		     (expr-thunk)
+		     (add-instr! methdef `(stfld ,(string-append "object "lambdatype"::"
+								 (capture-index->name
+								  index capture-map)))))))
+
+      (define (gen-local-get arginfo location)
+	(gen-local-load arginfo location)
+	(if (arginfo-boxed? arginfo)
+	    (add-instrs! methdef
+			 `((castclass ,*il-cell-type*)
+			   (ldfld ,*il-cell-value-field*)))))
+
+      (define (gen-global-get name)
+	(add-instrs! methdef `((ldfld ,(string-append *il-cell-type*" "lambdatype"::"
+						      (global->fieldname name)))
+			       (ldfld ,*il-cell-value-field*))))
+
+      (define (gen-closure-instantiation node captures)
+	(let ((ctor-token (build-closure node)))
+	  (add-instr! methdef '(ldarg module))
+	  (for-each (lambda (capture)
+		      (let* ((old-loc (node-get capture 'capture 'old-location))
+			     (arginfo (node-get capture 'capture 'arginfo)))
+			(gen-local-load arginfo old-loc)))
+		    captures)
+	  (add-instr! methdef `(newobj ,ctor-token))))
+
+      (define (gen-asm formals actuals code)
+	(let* ((dotnet-code (cond
+			     ((find (lambda (clause)
+				      (eq? 'dotnet (node-get clause 'backend-asm 'name)))
+				    code)
+			      => (lambda (clause) (node-get clause 'backend-asm 'code)))
+			     (else (error "cps-asm missing dotnet clause" node))))
+	       (env (map cons formals actuals))
+	       (labels (map (lambda (orig)
+			      (cons orig (string-append (next-label) (mangle-id orig))))
+			    (filter symbol? dotnet-code))))
+	  (for-each (lambda (instr)
+		      (cond
+		       ((symbol? instr) (add-instr! methdef (cdr (assq instr labels))))
+		       ((eq? (car instr) '$) (gen (cdr (assq (cadr instr) env))))
+		       (else
+			(let ((alpha-converted-instr
+			       (map (lambda (x) (if (symbol? x)
+						    (let ((cell (assq x labels)))
+						      (if cell
+							  (cdr cell)
+							  x))
+						    x))
+				    instr)))
+			  (add-instr! methdef alpha-converted-instr)))))
+		    dotnet-code)))
+
+      (define (gen-local-set arginfo location expr)
+	(if (arginfo-boxed? arginfo)
+	    (begin
+	      (gen-local-load arginfo location)
+	      (add-instr! methdef `(castclass ,*il-cell-type*))
+	      (gen expr)
+	      (add-instr! methdef `(stfld ,*il-cell-value-field*)))
+	    (gen-local-store arginfo location (lambda () (gen expr)))))
+
+      (define (gen-global-set name expr)
+	(add-instr! methdef `(ldfld ,(string-append *il-cell-type*" "lambdatype"::"
+						    (global->fieldname name))))
+	(gen expr)
+	(add-instr! methdef `(stfld ,*il-cell-value-field*)))
+
+      (define (build-argvec arity rands)
+	(add-instrs! methdef `((ldc.i4 ,arity)
+			       (newarr ,*il-objarray-type*)))
+	(do ((i 0 (+ i 1))
+	     (rands rands (cdr rands)))
+	    ((= i arity))
+	  (add-instrs! methdef `((dup)
+				 (ldc.i4 ,i)))
+	  (gen (car rands))
+	  (add-instr! methdef '(stelem.ref))))
+
+      (define (gen-apply cont rator rands)
+	(let ((arity (length rands)))
+	  (gen rator)
+	  (add-instr! methdef `(ldarg module))
+	  (if (> arity *max-non-varargs-arity*)
+	      (if cont
+		  (begin
+		    (build-argvec arity rands)
+		    (add-instrs! methdef `((tail.)
+					   (callvirt ,*il-reply-varargs-method*))))
+		  (begin
+		    (gen (car rands))
+		    (build-argvec (- arity 1) (cdr rands))
+		    (add-instrs! methdef `((tail.)
+					   (callvirt ,*il-apply-varargs-method*)))))
+	      (if cont
+		  (begin
+		    (for-each gen rands)
+		    (add-instrs! methdef
+				 `((tail.)
+				   (callvirt ,(string-append
+					       "object "*il-cont-type*"::Reply"
+					       (format-types (cons *il-module-type*
+								   (make-list arity "object"))))))))
+		  (begin
+		    (for-each gen rands)
+		    (add-instrs! methdef
+				 `((tail.)
+				   (callvirt ,(string-append
+					       "object "*il-cont-type*"::Apply"
+					       (format-types (cons* *il-module-type*
+								    *il-cont-type*
+								    (make-list (- arity 1)
+									       "object"))))))))))
+	  (add-instr! methdef '(ret))))
+
+      (define (gen-begin head tail)
+	(gen head)
+	(add-instr! methdef '("// POP VALUE HERE??? %%%%%%"))
+	(gen tail))
+
+      (define (gen-if test true false)
+	(let ((label-true/pop (next-label))
+	      (label-true (next-label))
+	      (label-done (next-label)))
+	  (gen test)
+	  (add-instrs! methdef `((dup)
+				 (isinst "bool")
+				 (brfalse ,label-true/pop)
+				 (unbox "bool")
+				 (ldind.i1)
+				 (brtrue ,label-true)))
+	  (gen false)
+	  (add-instrs! methdef `((br ,label-done)
+				 ,label-true/pop
+				 (pop)
+				 ,label-true))
+	  (gen true)
+	  (add-instrs! methdef `(,label-done))))
+
+      (define (gen node)
+	(node-match node
+		    ((cps-lit value) (gen-literal methdef value))
+		    ((cps-void) (gen-void))
+		    ((cps-local-get name arginfo location) (gen-local-get arginfo location))
+		    ((cps-global-get name) (gen-global-get name))
+		    ((cps-lambda cont formals varargs captures globals expr)
+		     (gen-closure-instantiation node captures))
+		    ((cps-asm formals actuals code) (gen-asm formals actuals code))
+		    ((cps-local-set name arginfo location expr)
+		     (gen-local-set arginfo location expr))
+		    ((cps-global-set name expr) (gen-global-set name expr))
+		    ((cps-apply cont rator rands) (gen-apply cont rator rands))
+		    ((cps-begin head tail) (gen-begin head tail))
+		    ((cps-if test true false) (gen-if test true false))))
+
+      (gen node))
+
+    (define (gen-module-entry-point node)
+      ;; We're relying here on being handed a cps-lambda node, that is
+      ;; a real lambda-proc, not a lambda-cont (or lambda-jump, once
+      ;; we implement those).
+      (compiler-assert module-entry-point-is-lambda-proc
+		       (and (node-kind? node 'cps-lambda)
+			    (node-get node 'cps-lambda 'cont)))
+      (let ((entry (classdef-add-method! statics-classdef "GetEntryPoint" #f #t *il-closure-type*
+					 `((module ,*il-module-type*)))))
+	(gen-node entry statics-classname '() node)
+	(add-instr! entry '(ret))))
 
     ;;---------------------------------------------------------------------------
     (for-each display (list ";; dotnet backend compiling to namespace "fq-namespace"\n"))
-    (gen-closure #f frontend-result)
+    (gen-module-entry-point frontend-result)
 
     (for-each display (list ";; dotnet backend generating "output-filename"\n"))
     (delete-file-if-exists output-filename)

@@ -1,9 +1,13 @@
-(define (make-arginfo name)
+(define (make-arginfo is-cont name)
   (make-node 'arginfo
 	     'name name
+	     'cont is-cont
 	     'captured #f
 	     'mutated #f
 	     'is-rest #f))
+
+(define (make-normal-arginfo n)
+  (make-arginfo #f n))
 
 (define (arginfo-capture! ai)
   (node-set! ai 'arginfo 'captured #t))
@@ -20,15 +24,16 @@
 	  ((null? formals)
 	   (let ((new-args (reverse acc)))
 	     (values #f
-		     (map make-arginfo new-args))))
+		     (map make-normal-arginfo new-args))))
 	  (else
 	   (values #t
 		   (reverse (cons (make-node 'arginfo
 					     'name formals
+					     'cont #f
 					     'captured #f
 					     'mutated #f
 					     'is-rest #t)
-				  (map make-arginfo acc))))))))
+				  (map make-normal-arginfo acc))))))))
 
 (define (make-begin begin-kind empty-value exprs)
   (reduce-right (lambda (head tail)
@@ -51,8 +56,8 @@
 				 (let ((name (node-get def 'define 'name)))
 				   (cons (gensym (symbol->string name)) name)))
 			       defs)))
-	      (let* ((temp-formals (map make-arginfo (map car temps)))
-		     (def-formals (map make-arginfo (map cdr temps)))
+	      (let* ((temp-formals (map make-normal-arginfo (map car temps)))
+		     (def-formals (map make-normal-arginfo (map cdr temps)))
 		     (dummy-initialisers (map (lambda (x) (make-node 'ds-void)) defs))
 		     (updaters (map (lambda (temp-entry)
 				      (make-node 'ds-set

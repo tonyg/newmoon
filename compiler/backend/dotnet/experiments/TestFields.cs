@@ -1,12 +1,14 @@
 public class A {
     int x;
+    public static int yy;
+    public static object bval;
 
     public A(int x) {
 	this.x = x;
     }
 
     public virtual int getX() {
-	return this.x;
+	return ((bool) bval) ? this.x : 999;
     }
 
     public int getX2() {
@@ -14,6 +16,12 @@ public class A {
     }
 
     public static int fiddle(int b) {
-        return b * 3;
+	object x = true;
+	string y = x.ToString();
+	if (yy == 34) {
+	    return b * 3;
+	} else {
+	    return b * 600;
+	}
     }
 }
