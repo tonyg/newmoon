@@ -316,7 +316,7 @@
 		     (string->list str)))))
 
 (define (debug-code . strs)
-  (if #t
+  (if #f
       `((ldstr ,(escape-string (string-concatenate strs)))
 	(call ,*il-writeline-method*))
       '()))
