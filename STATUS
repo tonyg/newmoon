@@ -1,0 +1,7 @@
+Core compiler + dotnet backend = working
+
+Library = not compiling yet
+
+The evaluator for the macro system is giving me gyp. Need to gut it
+and replace with a macro-expander/parser that does a decent job. Phase
+separation issues, hello my old friends...
