@@ -683,10 +683,8 @@
 (define (force promise)
   (promise))
 
-(define-syntax delay
-  (syntax-rules ()
-    ((delay expression)
-     (make-promise (lambda () expression)))))
+(defmacro delay (expression)
+  `(make-promise (lambda () ,expression)))
 
 (require (lib "r5rs-misc.scm"))
 (require (lib "r5rs-ports.scm"))
