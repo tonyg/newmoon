@@ -90,7 +90,7 @@
 	   ;; a macro or primitive syntax. Test it.
 	   (else
 	    (case (car expr)
-	      ((quote)		(make-lit expr))
+	      ((quote)		(make-lit (cadr expr)))
 	      ((%assemble)	(make-node 'asm
 					   'formals (cadr expr)
 					   'actuals (map expand (caddr expr))
