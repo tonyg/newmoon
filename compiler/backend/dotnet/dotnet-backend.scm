@@ -663,7 +663,9 @@
 	  (for-each (lambda (instr)
 		      (cond
 		       ((symbol? instr) (add-instr! methdef (cdr (assq instr labels))))
-		       ((eq? (car instr) '$) (gen #t (cdr (assq (cadr instr) env))))
+		       ((eq? (car instr) '$)
+			(gen #t (cdr (or (assq (cadr instr) env)
+					 (error "cps-asm: unknown formal" (list instr node))))))
 		       (else
 			(let ((alpha-converted-instr
 			       (map (lambda (x) (if (symbol? x)
