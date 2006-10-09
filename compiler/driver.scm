@@ -1,5 +1,8 @@
 ;; (require (lib "pretty.ss"))
 
+(define (valid-literal? x)
+  (not (procedure? x)))
+
 (define all-languages
   `(
     (scheme
@@ -19,7 +22,7 @@
 
     (core-scheme
      (%or
-      (lit (value #t))
+      (lit (value ,valid-literal?))
       (void)
       (var (name ,symbol?))
       (lambda (formals #t) (varargs ,boolean?) (body (%list-of core-scheme)))
@@ -33,7 +36,7 @@
 
     (ds
      (%or
-      (ds-lit (value #t))
+      (ds-lit (value ,valid-literal?))
       (ds-void)
       (ds-var (name ,symbol?))
       (ds-lambda (formals (%list-of arginfo)) (varargs ,boolean?) (expr ds))
@@ -46,7 +49,7 @@
 
     (cps-value
      (%or
-      (cps-lit (value #t))
+      (cps-lit (value ,valid-literal?))
       (cps-void)
       (cps-var (name ,symbol?))
       (cps-lambda (cont opt-arginfo)
@@ -78,7 +81,7 @@
 
     (cps2-value
      (%or
-      (cps-lit (value #t))
+      (cps-lit (value ,valid-literal?))
       (cps-void)
       (cps-local-get (name ,symbol?) (arginfo arginfo) (location local-location))
       (cps-global-get (name ,symbol?))
