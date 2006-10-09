@@ -20,11 +20,12 @@
 
 (define *globals* (make-hash-table))
 
-(define (%define-global-variable name value)
-  (hash-table-put! *globals* name value))
-
 (defmacro debug-pretty-print (exp)
   `(begin 'debugging-switched-off))
+
+(define (%define-global-variable name value)
+  (debug-pretty-print `(%define-global-variable ,name ,value))
+  (hash-table-put! *globals* name value))
 
 (define (cps2->closure node)
   (define (make-accessor generate-box-loads arginfo location)
@@ -32,7 +33,9 @@
 		((loc-continuation)
 		 (if (and generate-box-loads (arginfo-boxed? arginfo))
 		     (error "Boxed continuation")
-		     (lambda (k args env) k)))
+		     (lambda (k args env)
+		       (debug-pretty-print `(load.k ,(node-get arginfo 'arginfo 'name)))
+		       k)))
 		((loc-argument index)
 		 (if (and generate-box-loads (arginfo-boxed? arginfo))
 		     (lambda (k args env)
@@ -138,6 +141,7 @@
 				    (not (and cont (arginfo-boxed? cont))))
 		   (if varargs
 		       (lambda (k args oldenv)
+			 (debug-pretty-print `(va-lambda ,args ,oldenv ,num-formals ,num-captures))
 			 (let ((env (make-vector num-captures)))
 			   (for-each (lambda (action) (action k args oldenv env)) capture-actions)
 			   (lambda (k . actuals)
