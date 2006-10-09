@@ -27,7 +27,7 @@
 
 (define main$debug (make-parameter #f))
 (define main$libpath (make-parameter (list "../lib")))
-(define compiler$without-basic-libraries (make-parameter #t))
+(define compiler$without-basic-libraries (make-parameter #f))
 (define compiler$make-program (make-parameter #f))
 (define compiler$target-namespace (make-parameter #f))
 

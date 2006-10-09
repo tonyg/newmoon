@@ -61,16 +61,20 @@
 		(loop rest)))))))
 
 (define (visit filename)
-  (let ((fc (string-append filename ".sil")))
-    (if (not (file-exists? fc))
-	(compile-file filename))
-    (with-input-from-file fc
-      (lambda ()
-	(let* ((detail (read))
-	       (visit-time (car detail))
-	       (parse-tree (cadr detail)))
-	  (parameterize ((compiler$visit-time '()))
-	    (for-each eval visit-time)))))))
+  (display (string-append ";; visiting "filename" ..."))
+  (newline)
+  (with-input-from-file filename
+    (lambda ()
+      (let loop ()
+	(let ((expr (read)))
+	  (if (eof-object? expr)
+	      (begin
+		(display (string-append ";; visited "filename"."))
+		(newline))
+	      (begin
+		;; We call macro-expand for its side-effects on the symbol-table!
+		(macro-expand expr)
+		(loop))))))))
 
 (define (delete-file-if-exists filename)
   (with-handlers
