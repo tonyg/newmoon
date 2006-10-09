@@ -505,11 +505,11 @@
   (map1 symbol->string
 	(vector->list
 	 (%assemble (sym charstr) ((string->symbol x) charstr)
-	   ($ sym)
-	   ($ charstr)
-	   (castclass "class [Newmoon]Newmoon.SchemeString")
-	   (call "instance char[] [Newmoon]Newmoon.SchemeString::GetCharArray()")
-	   (call "instance string [mscorlib]System.String::Split(char[])")))))
+	   (dotnet ($ sym)
+		   ($ charstr)
+		   (castclass "class [Newmoon]Newmoon.SchemeString")
+		   (call "instance char[] [Newmoon]Newmoon.SchemeString::GetCharArray()")
+		   (call "instance string [mscorlib]System.String::Split(char[])"))))))
 
 (define (getenv name)
   (%assemble (name f) (name #f)
