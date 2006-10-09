@@ -657,7 +657,7 @@
 	   (car ,restvar))
       `(if (null? ,restvar)
 	   ,def
-	   (check-arg ,pred (car ,rest-var) ':optional))))
+	   (check-arg ,pred (car ,restvar) ':optional))))
 
 (defmacro let-optionals (restvar vardefs . body)
   (if (null? vardefs)
