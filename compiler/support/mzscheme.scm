@@ -74,7 +74,7 @@
 
 (define (delete-file-if-exists filename)
   (with-handlers
-   ((not-break-exn? (lambda (exn) 'failed-ok)))
+   ((exn:fail:filesystem? (lambda (exn) 'failed-ok)))
    (delete-file filename)))
 
 (define (call-external-program program . args)
