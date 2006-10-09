@@ -48,7 +48,7 @@
     (scheme (pair? x))
     (dotnet ($ x)
 	    (isinst "class [Newmoon]Newmoon.Pair")
-	    (brinst ldtrue)
+	    (brtrue ldtrue)
 	    ($ f)
 	    (br done)
 	    ldtrue
@@ -100,7 +100,7 @@
     (scheme (vector? x))
     (dotnet ($ x)
 	    (isinst "object[]")
-	    (brinst ldtrue)
+	    (brtrue ldtrue)
 	    ($ f)
 	    (br done)
 	    ldtrue
@@ -120,7 +120,7 @@
     (scheme (symbol? x))
     (dotnet ($ x)
 	    (isinst "string")
-	    (brinst ldtrue)
+	    (brtrue ldtrue)
 	    ($ f)
 	    (br done)
 	    ldtrue
@@ -556,7 +556,7 @@
 	    ($ len)
 	    (unbox "int32")
 	    (ldind.i4)
-	    (call "class [mscorlib]System.Array::CreateInstance(class [mscorlib]System.Type, int32)"))))
+	    (call "class [mscorlib] System.Array class [mscorlib]System.Array::CreateInstance(class [mscorlib]System.Type, int32)"))))
 
 (define (fx= x y)
   (%assemble (x y t f) (x y #t #f)
@@ -567,7 +567,7 @@
 	    ($ y)
 	    (unbox "int32")
 	    (ldind.i4)
-	    (bne ldfalse)
+	    (bne.un ldfalse)
 	    ($ t)
 	    (br done)
 	    ldfalse
