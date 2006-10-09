@@ -4,8 +4,9 @@
 (define (core-scheme-eval sexp)
   (let* ((cps2 (compiler-front-end-phases sexp))
 	 (thunk (cps2->closure cps2))
-	 (outer-k (lambda (dummy-k v) v)))
-    ((thunk outer-k '#() '#()) outer-k)))
+	 (outer-k (lambda (dummy-k v) v))
+	 (result ((thunk outer-k '#() '#()) outer-k)))
+    result))
 
 (define-record-type core-scheme-cell
   (make-core-scheme-cell name value)
