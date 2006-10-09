@@ -21,7 +21,7 @@
 (define *globals* (make-hash-table))
 
 (defmacro debug-pretty-print (exp)
-  `(begin 'debugging-switched-off))
+  `(begin 'debug-pretty-print-result))
 
 (define (%define-global-variable name value)
   (debug-pretty-print `(%define-global-variable ,name ,value))
@@ -146,6 +146,7 @@
 			 (let ((env (make-vector num-captures)))
 			   (for-each (lambda (action) (action k args oldenv env)) capture-actions)
 			   (lambda (k . actuals)
+			     (debug-pretty-print `(va-app ,k ,@actuals))
 			     (let ((args (make-vector num-formals)))
 			       (do ((i 0 (+ i 1))
 				    (actuals actuals (cdr actuals)))
@@ -159,6 +160,7 @@
 			 (let ((env (make-vector num-captures)))
 			   (for-each (lambda (action) (action k args oldenv env)) capture-actions)
 			   (lambda (k . actuals)
+			     (debug-pretty-print `(app ,k ,@actuals))
 			     (let ((args (list->vector actuals)))
 			       (evaluate-chain k args env boxing-actions)
 			       (body-closure k args env))))))))
