@@ -14,7 +14,7 @@
 		($ name)
 		($ kind)
 		(castclass "string")
-		($ val)
+		($ value)
 		(call "void class [Newmoon]Newmoon.Environment::InstallBinding(class [Newmoon]Newmoon.Module, object, string, object)"))))
     (definer 'sys$install-binding 'global definer)))
  (sys$install-binding '%define-global-variable 'global
