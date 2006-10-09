@@ -301,12 +301,22 @@
 		(callvirt "instance string class [mscorlib]System.Object::ToString()")
 		(call "string class [Newmoon]Newmoon.Primitive::Gensym(string)")))))
 
-(define apply
-  (%assemble () ()
-    (scheme (lambda (k proc . args)
-	      (pretty-print `(scheme-apply-basic-library ,k ,proc ,args))
-	      (apply proc k args)))
-    (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()"))))
+(begin-for-syntax
+ (define apply
+   (%assemble () ()
+     (scheme (lambda (k proc . args)
+	       ;; Special implementation of apply to line up with
+	       ;; coreeval.scm's procedure calling conventions. We are
+	       ;; called with a continuation, a procedure to apply,
+	       ;; and a list of arguments for apply. The double-apply
+	       ;; here is because args contains all of our arguments -
+	       ;; the last of which is a list of arguments for
+	       ;; apply. The outer apply converts our args back into a
+	       ;; flat sequence of actuals, suitable for the inner
+	       ;; apply, which is the one we are trying to get to.
+	       ;;(pretty-print `(scheme-apply-basic-library ,k ,proc ,args))
+	       (apply apply proc k args)))
+     (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
 
 ;; These are the core macros.
 

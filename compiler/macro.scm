@@ -149,9 +149,8 @@
 		      (let ((kind (car kind/transformer))
 			    (transformer (cdr kind/transformer)))
 			(if (eq? kind 'form)
-			    (expand (apply transformer
-					   (lambda (dummy-k result) result)
-					   (cdr expr)))
+			    (let ((next-form (apply transformer (cdr expr))))
+			      (expand next-form))
 			    (error "Non-form macro used in form context" expr)))))
 		(else
 		 ;; The symbol isn't bound to a macro. It's just a
