@@ -4,25 +4,24 @@
 ; There are a few essential procedures required before we can set up
 ; the basic macros.
 
-((lambda ()
-   (define (definer name kind value)
-     (%assemble (name kind value) (name kind value)
-       (scheme (%define-global-variable name value))
-       (dotnet (ldarg module)
-	       ($ name)
-	       ($ kind)
-	       (castclass "string")
-	       ($ val)
-	       (call "void class [Newmoon]Newmoon.Environment::InstallBinding(class [Newmoon]Newmoon.Module, object, string, object)"))))
-   (definer 'sys$install-binding 'global definer)))
-
-(sys$install-binding '%define-global-variable 'global
-		     (lambda (name value)
-		       (sys$install-binding name 'global value)))
-
-(sys$install-binding '%define-macro-transformer 'global
-		     (lambda (name kind transformer)
-		       (sys$install-binding name 'macro (cons kind transformer))))
+(begin-for-syntax
+ ((lambda ()
+    (define (definer name kind value)
+      (%assemble (name kind value) (name kind value)
+	(scheme (%define-global-variable name value))
+	(dotnet (ldarg module)
+		($ name)
+		($ kind)
+		(castclass "string")
+		($ val)
+		(call "void class [Newmoon]Newmoon.Environment::InstallBinding(class [Newmoon]Newmoon.Module, object, string, object)"))))
+    (definer 'sys$install-binding 'global definer)))
+ (sys$install-binding '%define-global-variable 'global
+		      (lambda (name value)
+			(sys$install-binding name 'global value)))
+ (sys$install-binding '%define-macro-transformer 'global
+		      (lambda (name kind transformer)
+			(sys$install-binding name 'macro (cons kind transformer)))))
 
 (define (null? x)
   (%assemble (x nil t f) (x '() #t #f)
