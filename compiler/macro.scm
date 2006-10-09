@@ -45,6 +45,13 @@
 		 'name (car clause)
 		 'code (cdr clause)))
 
+    (define (build-and-define-macro name kind transformer)
+      (%define-macro-transformer name kind
+				 (let ((p (core-scheme-eval transformer)))
+				   (lambda args
+				     (apply p (lambda (dummy-k result) result) args))))
+      (make-defmacro name kind transformer))
+
     (lambda (expr)
       (let expand/scope ((scope '()) (expr expr))
 
@@ -106,18 +113,12 @@
 	      ((defmacro)	(let ((name (cadr expr))
 				      (args (caddr expr))
 				      (body (cdddr expr)))
-				  (let ((transformer-source (make-lambda args body)))
-				    (%define-macro-transformer name 'form
-							       (core-scheme-eval
-								transformer-source))
-				    (make-defmacro name 'form transformer-source))))
+				  (let ((transformer-source (expand `(lambda ,args ,@body))))
+				    (build-and-define-macro name 'form transformer-source))))
 	      ((defmacro-id)	(let ((name (cadr expr))
 				      (body (cddr expr)))
-				  (let ((transformer-source (make-lambda args body)))
-				    (%define-macro-transformer name 'id
-							       (core-scheme-eval
-								transformer-source))
-				    (make-defmacro name 'id transformer-source))))
+				  (let ((transformer-source (expand `(lambda () ,@body))))
+				    (build-and-define-macro name 'id transformer-source))))
 	      ((lambda)		(make-lambda (cadr expr) (cddr expr)))
 	      ((begin)		(make-begin (map expand (cdr expr))))
 	      ((begin-for-syntax)
@@ -142,7 +143,9 @@
 		      (let ((kind (car kind/transformer))
 			    (transformer (cdr kind/transformer)))
 			(if (eq? kind 'form)
-			    (expand (apply transformer (cdr expr)))
+			    (expand (apply transformer
+					   (lambda (dummy-k result) result)
+					   (cdr expr)))
 			    (error "Non-form macro used in form context" expr)))))
 		(else
 		 ;; The symbol isn't bound to a macro. It's just a

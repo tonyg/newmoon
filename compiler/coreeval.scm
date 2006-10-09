@@ -83,7 +83,8 @@
 			     (value (if (procedure? orig-value)
 					(lambda (k . actuals)
 					  (debug-pretty-print `(primitive ,name))
-					  (k (apply orig-value actuals)))
+					  (k 'dummy-continuation-primitive
+					     (apply orig-value actuals)))
 					orig-value)))
 			(hash-table-put! *globals* name value)
 			value))))
