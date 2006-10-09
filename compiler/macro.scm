@@ -82,9 +82,15 @@
 	   ;; makes it a variable reference.
 	   ((symbol? expr)
 	    (make-node 'var 'name expr))
-	   ;; If it's not a pair here, it can't expand. Return it.
+	   ;; If it's not a pair here, either it's a pre-expanded
+	   ;; node, in which case it should be returned without
+	   ;; further wrapping, or it's a literal, in which case it
+	   ;; can't expand any further and should be returned within a
+	   ;; lit node.
 	   ((not (pair? expr))
-	    (make-lit expr))
+	    (if (node? expr)
+		expr
+		(make-lit expr)))
 	   ;; If the car isn't a symbol, or it is, but is in the list
 	   ;; of ribs of identifiers lexically in scope, it can't be a
 	   ;; macro expansion.  Expand each element of the combination
