@@ -186,8 +186,6 @@
 	 (invoke "sisc.data.Quantity" "comp" boolean ("sisc.data.Quantity" int) virtual)
 	 (invoke "sisc.util.Util" "truth" "sisc.data.SchemeBoolean" (boolean) static))))
 
-;; HERE
-
 (define (+ x y)
   (%assemble (x y) (x y)
     (scheme (+ x y))
