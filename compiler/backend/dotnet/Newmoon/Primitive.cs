@@ -11,11 +11,8 @@ namespace Newmoon {
     }
 
     public class Primitive {
-	public static object SchemeError(object[] args) {
-	    if (args.Length < 1)
-		throw new WrongArgCount(1, 0, true, false);
-	    throw new Newmoon.SchemeException(args[0].ToString(),
-					      (List) ((Pair) List.FromVector(args)).Cdr);
+	public static object SchemeError(object message, List args) {
+	    throw new Newmoon.SchemeException(message.ToString(), args);
 	}
 
 	public static object Display(object x) {

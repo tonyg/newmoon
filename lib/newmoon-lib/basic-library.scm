@@ -7,7 +7,7 @@
 (begin-for-syntax
  ((lambda ()
     (define (definer name kind value)
-      (%assemble (name kind value) (name kind value)
+      (%assemble (name kind value result) (name kind value 'dummy)
 	(scheme (%define-global-variable name value))
 	(dotnet (ldarg.0)
 		(ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
@@ -15,7 +15,8 @@
 		($ kind)
 		(castclass "string")
 		($ value)
-		(call "void class [Newmoon]Newmoon.Environment::InstallBinding(class [Newmoon]Newmoon.Module, object, string, object)"))))
+		(call "void class [Newmoon]Newmoon.Environment::InstallBinding(class [Newmoon]Newmoon.Module, object, string, object)")
+		($ result))))
     (definer 'sys$install-binding 'global definer)))
  (sys$install-binding '%define-global-variable 'global
 		      (lambda (name value)
@@ -492,12 +493,12 @@
 (define (string-split s charstr)
   (map1 symbol->string
 	(vector->list
-	 (%assemble (sym charstr) ((string->symbol x) charstr)
+	 (%assemble (sym charstr) ((string->symbol s) charstr)
 	   (dotnet ($ sym)
 		   ($ charstr)
 		   (castclass "class [Newmoon]Newmoon.SchemeString")
 		   (call "instance char[] [Newmoon]Newmoon.SchemeString::GetCharArray()")
-		   (call "instance string [mscorlib]System.String::Split(char[])"))))))
+		   (call "instance string[] [mscorlib]System.String::Split(char[])"))))))
 
 (define (getenv name)
   (%assemble (name f) (name #f)
@@ -509,10 +510,14 @@
 	    (newobj "instance void class [Newmoon]Newmoon.SchemeString::.ctor(string)")
 	    (br done)
 	    ldfalse
+	    (pop)
 	    ($ f)
 	    done)))
 
-(define-primitive %%load-void (assembler "LdnullAssembler"))
+(define (%%load-void)
+  (%assemble () ()
+    (dotnet (ldnull))))
+
 (define (void-guard v g)
   (%assemble (v g) (v g)
     (dotnet ($ v)
@@ -522,6 +527,15 @@
 	    ld-g
 	    ($ g)
 	    done)))
+
+(define (%%dump val)
+  (%assemble (val) (val)
+    (scheme (display val))
+    (dotnet ("// print assembly start")
+	    ($ val)
+	    (dup)
+	    (call "void class [mscorlib]System.Console::Write(object)")
+	    ("// print assembly stop"))))
 
 (define library-search-path
   (make-parameter
@@ -615,6 +629,20 @@
 (define (string-append . strings)
   (string-join strings ""))
 
+(define (memv val lst)
+  (let loop ((lst lst))
+    (cond
+     ((null? lst) #f)
+     ((eq? val (car lst)) lst) ;; %%% ! should be eqv!
+     (else (loop (cdr lst))))))
+
+(define (error message . args)
+  (%assemble (message args) (message args)
+    (dotnet ($ message)
+	    ($ args)
+	    (castclass "class [Newmoon]Newmoon.List")
+	    (call "object class [Newmoon]Newmoon.Primitive::SchemeError(object, class [Newmoon]Newmoon.List)"))))
+
 (define (file-exists? x)
   (%assemble (x) (x)
     (dotnet ($ x)
@@ -638,6 +666,31 @@
 	    (if (file-exists? f)
 		f
 		(loop rest)))))))
+
+(define (%%invoke-module s)
+  (%assemble (s) (s)
+    (dotnet (ldarg.0)
+	    (ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
+	    (call "instance class [Newmoon]Newmoon.Environment [Newmoon]Newmoon.Module::get_Env()")
+	    ($ s)
+	    (castclass "string")
+	    (call "instance class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Environment::InvokeModule(string)"))))
+
+(define (%%get-entry-point m)
+  (%assemble (m) (m)
+    (dotnet ($ m)e
+	    (castclass "class [Newmoon]Newmoon.Module")
+	    (callvirt "instance class [Newmoon]Newmoon.Closure class [Newmoon]Newmoon.Module::GetEntryPoint()"))))
+
+(define (require-libraries libspecs)
+  (for-each1 (lambda (libspec)
+	       (case (car libspec)
+		 ((lib) (let ((module (%%invoke-module (string->symbol
+							(resolve-library-path (cadr libspec)
+									      (cddr libspec))))))
+			  ((%%get-entry-point module))))
+		 (else (error "Bad libspec" libspec))))
+	     libspecs))
 
 (defmacro receive (vars expr . body)
   `(call-with-values (lambda () ,expr)
