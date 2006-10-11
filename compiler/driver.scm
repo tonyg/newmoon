@@ -154,7 +154,7 @@
 (define (sequence-phases datum phase-alist)
   (if (null? phase-alist)
       (begin
-	(if (main$debug)
+	(if (debug-mode=? 'sequence-phases)
 	    (begin
 	      (display ";; Final phase result is ")
 	      (write (node->list datum))
@@ -166,7 +166,7 @@
 	     (phase-body (caddr entry))
 	     (phase-postlanguage (cadddr entry))
 	     (rest (cdr phase-alist)))
-	(if (main$debug)
+	(if (debug-mode=? 'sequence-phases)
 	    (begin
 	      (display ";;--------------------------------------------------")
 	      (newline)
