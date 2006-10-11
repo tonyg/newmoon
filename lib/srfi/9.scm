@@ -1,46 +1,105 @@
 ;;; Implementation of SRFI-9 record types.
 ;;; Taken directly from SRFI-9's defining document, except for the
 ;;; underlying record representation, which is new code.
+;;; Defmacroised 11 Oct 2006.
 ;;; Tony Garnock-Jones 18 June 2003, for Newmoon
 
-(define-primitive/lambda (record? x) (type-predicate "Newmoon.Record"))
-(define-primitive/lambda (make-record size) (specific-constructor "Newmoon.Record" int))
-(define-primitive/lambda (record-ref record index)
-  (specific-property-reader "Newmoon.Record" "Item" int))
-(define-primitive/lambda (record-set! record index value)
-  (specific-property-writer "Newmoon.Record" "Item" int))
+(define (record? x)
+  (%assemble (x t f) (x #t #f)
+    (dotnet ($ x)
+	    (isinst "class [Newmoon]Newmoon.Record")
+	    (brtrue ldtrue)
+	    ($ f)
+	    (br done)
+	    ldtrue
+	    ($ t)
+	    done)))
+
+(define (make-record size)
+  (%assemble (size) (size)
+    (dotnet ($ size)
+	    (unbox "int32")
+	    (ldind.i4)
+	    (newobj "instance void class [Newmoon]Newmoon.Record::.ctor(int32)"))))
+
+(define (record-ref record index)
+  (%assemble (record index) (record index)
+    (dotnet ($ record)
+	    (castclass "class [Newmoon]Newmoon.Record")
+	    ($ index)
+	    (unbox "int32")
+	    (ldind.i4)
+	    (call "instance object class [Newmoon]Newmoon.Record::get_Item(int32)"))))
+
+(define (record-set! record index value)
+  (%assemble (record index value) (record index value)
+    (dotnet ($ record)
+	    (castclass "class [Newmoon]Newmoon.Record")
+	    ($ index)
+	    (unbox "int32")
+	    (ldind.i4)
+	    ($ value)
+	    (call "instance void class [Newmoon]Newmoon.Record::set_Item(int32, object)")
+	    ($ value))))
 
 ;; Syntax definitions
 
 ; Definition of DEFINE-RECORD-TYPE
 
-(define-syntax define-record-type
-  (syntax-rules ()
-    ((define-record-type type
-       (constructor constructor-tag ...)
-       predicate
-       (field-tag accessor . more) ...)
-     (begin
-       (define type
-         (make-record-type 'type '(field-tag ...)))
-       (define constructor
-         (record-constructor type '(constructor-tag ...)))
-       (define predicate
-         (record-predicate type))
-       (define-record-field type field-tag accessor . more)
-       ...))))
+(defmacro define-record-type (type ctor pred . fields)
+  (if (not (symbol? type)) (error "Bad record type" type))
+  (if (not (and (list? ctor)
+		(positive? (length ctor))
+		(every symbol? ctor)))
+      (error "Bad record constructor" type ctor))
+  (if (not (symbol? pred)) (error "Bad record predicate" type pred))
+  (for-each (lambda (field)
+	      (if (not (and (list? field)
+			    (every symbol? field)
+			    (or (= (length field) 2)
+				(= (length field) 3))))
+		  (error "Bad field definition" type field)))
+	    fields)
+  `(begin
+     (define ,type (make-record-type ',type ',(map car fields)))
+     (define ,(car ctor) (record-constructor ,type ',(cdr ctor)))
+     (define ,pred (record-predicate ,type))
+     ,@(map (lambda (field) `(define-record-field ,type ,@field)) fields)))
+
+; (define-syntax define-record-type
+;   (syntax-rules ()
+;     ((define-record-type type
+;        (constructor constructor-tag ...)
+;        predicate
+;        (field-tag accessor . more) ...)
+;      (begin
+;        (define type
+;          (make-record-type 'type '(field-tag ...)))
+;        (define constructor
+;          (record-constructor type '(constructor-tag ...)))
+;        (define predicate
+;          (record-predicate type))
+;        (define-record-field type field-tag accessor . more)
+;        ...))))
 
 ; An auxilliary macro for define field accessors and modifiers.
 ; This is needed only because modifiers are optional.
 
-(define-syntax define-record-field
-  (syntax-rules ()
-    ((define-record-field type field-tag accessor)
-     (define accessor (record-accessor type 'field-tag)))
-    ((define-record-field type field-tag accessor modifier)
-     (begin
-       (define accessor (record-accessor type 'field-tag))
-       (define modifier (record-modifier type 'field-tag))))))
+(defmacro define-record-field (type field-tag accessor . maybe-modifier)
+  (if (null? maybe-modifier)
+      `(define ,accessor (record-accessor ,type ',field-tag))
+      `(begin
+	 (define ,accessor (record-accessor ,type ',field-tag))
+	 (define ,(car maybe-modifier) (record-modifier ,type ',field-tag)))))
+
+; (define-syntax define-record-field
+;   (syntax-rules ()
+;     ((define-record-field type field-tag accessor)
+;      (define accessor (record-accessor type 'field-tag)))
+;     ((define-record-field type field-tag accessor modifier)
+;      (begin
+;        (define accessor (record-accessor type 'field-tag))
+;        (define modifier (record-modifier type 'field-tag))))))
 
 ;; Record types
 
