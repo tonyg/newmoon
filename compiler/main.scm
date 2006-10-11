@@ -68,6 +68,13 @@
 				    (compiler-front-end-phases `(begin ,@exprs)))
 	  (display ";; compile-file finished  ") (display filename) (newline))))))
 
+(define (visit-libraries libspecs)
+  (for-each (lambda (libspec)
+	      (case (car libspec)
+		((lib) (visit (resolve-library-path (cadr libspec) (cddr libspec))))
+		(else (error "Bad libspec" libspec))))
+	    libspecs))
+
 (define (compile-expr expr)
   ;; Not finished/working yet
   (parameterize ((compiler$make-program #f))

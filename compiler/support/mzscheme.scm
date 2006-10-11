@@ -30,18 +30,7 @@
          (with-syntax (((exp ...) (read-file fn (syntax k))))
            (syntax (begin exp ...))))))))
 
-(define compiler$visit-time (make-parameter '()))
-
-(set! eval
-  (let ((eval eval))
-    (lambda (x)
-      (let ((x (if (and (pair? x)
-			(string? (car x))
-			(string=? (car x) "noexpand"))
-		   (cadr x)
-		   x)))
-	(compiler$visit-time (cons x (compiler$visit-time)))
-	(eval x)))))
+(define compiler$visit-time (make-parameter '())) ;; obsolete?? %%%
 
 (define (resolve-library-path filename collection-path)
   (let* ((cpath (if (null? collection-path)

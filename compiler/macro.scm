@@ -137,6 +137,8 @@
 	      ((set!)		(make-node 'set
 					   'name (cadr expr)
 					   'expr (expand (caddr expr))))
+	      ((require)	(visit-libraries (cdr expr))
+				(expand `(require-libraries ',(cdr expr))))
 	      (else
 	       ;; It's not primitive syntax.
 	       (cond
