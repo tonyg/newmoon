@@ -2,10 +2,15 @@
 ;; the "annotate" phase (a lambda term, in the cps2-value language).
 
 (define (core-scheme-eval sexp)
+  (if (debug-mode=? 'coreeval) (pretty-print `(core-scheme-eval ',(if (node? sexp)
+								      (vector "NODE"
+									      (node->list sexp))
+								      sexp))))
   (let* ((cps2 (compiler-front-end-phases sexp))
 	 (thunk (cps2->closure cps2))
-	 (outer-k (lambda (dummy-k v) v))
-	 (result ((thunk outer-k '#() '#()) outer-k)))
+	 (outer-k (lambda (dummy-magic dummy-k v) v))
+	 (result ((thunk outer-k '#() '#()))))
+    (if (debug-mode=? 'coreeval) (pretty-print `("core-scheme-eval-result" ,result)))
     result))
 
 (define-record-type core-scheme-cell
@@ -21,11 +26,15 @@
 (define *globals* (make-hash-table))
 
 (defmacro debug-pretty-print (exp)
-  `(begin 'debug-pretty-print-result))
+  `(begin (if (debug-mode=? 'coreeval-pp) (pretty-print ,exp)) 'debug-pretty-print-result)
+  ;;`(begin 'debug-pretty-print-result)
+  )
 
 (define (%define-global-variable name value)
   (debug-pretty-print `(%define-global-variable ,name ,value))
   (hash-table-put! *globals* name value))
+
+(define *coreeval-magic* (cons "coreeval" "magic"))
 
 (define (cps2->closure node)
   (define (make-accessor generate-box-loads arginfo location)
@@ -76,16 +85,31 @@
 		     (lambda (k args env)
 		       (debug-pretty-print `(store.e ,(node-get arginfo 'arginfo 'name)))
 		       (vector-set! env index (value-closure k args env)))))))
+  (define (magic-wrapper proc)
+    (lambda actuals
+      (debug-pretty-print `(magic-wrapper ,proc ,actuals))
+      (if (or (null? actuals)
+	      (not (eq? (car actuals) *coreeval-magic*)))
+	  (proc (lambda (dummy-magic dummy-k argvals) (car argvals)) actuals)
+	  (proc (cadr actuals) (caddr actuals)))))
+  (define (magic-unwrapper name proc)
+    (lambda actuals
+      (debug-pretty-print `(magic-unwrapper ,name ,actuals))
+      (if (or (null? actuals)
+	      (not (eq? (car actuals) *coreeval-magic*)))
+	  (apply proc actuals)
+	  (let ((v (apply proc (caddr actuals))))
+	    (debug-pretty-print `(unwrapper-value ,v))
+	    ((cadr actuals) *coreeval-magic* 'dummy-unwrapper-continuation-value (list v))))))
+  (define (maybe-unwrap name value)
+    (if (procedure? value)
+	(magic-unwrapper name value)
+	value))
   (define (cache-global name) ;; %%% needs fixing properly
     (hash-table-get *globals* name
 		    (lambda ()
 		      (let* ((orig-value (eval name))
-			     (value (if (procedure? orig-value)
-					(lambda (k . actuals)
-					  (debug-pretty-print `(primitive ,name))
-					  (k 'dummy-continuation-primitive
-					     (apply orig-value actuals)))
-					orig-value)))
+			     (value (maybe-unwrap name orig-value)))
 			(hash-table-put! *globals* name value)
 			value))))
   (define (evaluate-chain k args env chain)
@@ -145,25 +169,25 @@
 			 (debug-pretty-print `(va-lambda ,args ,oldenv ,num-formals ,num-captures))
 			 (let ((env (make-vector num-captures)))
 			   (for-each (lambda (action) (action k args oldenv env)) capture-actions)
-			   (lambda (k . actuals)
-			     (debug-pretty-print `(va-app ,k ,@actuals))
-			     (let ((args (make-vector num-formals)))
-			       (do ((i 0 (+ i 1))
-				    (actuals actuals (cdr actuals)))
-				   ((= i num-non-rest-formals)
-				    (vector-set! args i actuals))
-				 (vector-set! args i (car actuals)))
-			       (evaluate-chain k args env boxing-actions)
-			       (body-closure k args env)))))
+			   (magic-wrapper (lambda (k actuals)
+					    (debug-pretty-print `(va-app ,k ,@actuals))
+					    (let ((args (make-vector num-formals)))
+					      (do ((i 0 (+ i 1))
+						   (actuals actuals (cdr actuals)))
+						  ((= i num-non-rest-formals)
+						   (vector-set! args i actuals))
+						(vector-set! args i (car actuals)))
+					      (evaluate-chain k args env boxing-actions)
+					      (body-closure k args env))))))
 		       (lambda (k args oldenv)
 			 (debug-pretty-print `(lambda ,args ,oldenv ,num-formals ,num-captures))
 			 (let ((env (make-vector num-captures)))
 			   (for-each (lambda (action) (action k args oldenv env)) capture-actions)
-			   (lambda (k . actuals)
-			     (debug-pretty-print `(app ,k ,@actuals))
-			     (let ((args (list->vector actuals)))
-			       (evaluate-chain k args env boxing-actions)
-			       (body-closure k args env))))))))
+			   (magic-wrapper (lambda (k actuals)
+					    (debug-pretty-print `(app ,k ,@actuals))
+					    (let ((args (list->vector actuals)))
+					      (evaluate-chain k args env boxing-actions)
+					      (body-closure k args env)))))))))
 		((cps-asm formals actuals code)
 		 (cond
 		  ((find (lambda (clause) (eq? 'scheme (node-get clause 'backend-asm 'name))) code)
@@ -173,8 +197,10 @@
 			       (code-proc (eval code-expr)) ;; !
 			       (actual-thunks (map walk actuals)))
 			  (lambda (k args env)
-			    (apply code-proc
-				   (map (lambda (t) (t k args env)) actual-thunks))))))
+			    (maybe-unwrap
+			     'anonymous-result-of-scheme-assembly
+			     (apply code-proc
+				    (map (lambda (t) (t k args env)) actual-thunks)))))))
 		  (else
 		   (error "cps-asm missing scheme clause" node))))
 		((cps-local-set name arginfo location expr)
@@ -192,10 +218,11 @@
 		       (rands-closures (map walk rands)))
 		   (lambda (k args env)
 		     (let ((argvals (map (lambda (c) (c k args env)) rands-closures)))
-		       (apply (rator-closure k args env)
-			      (if cont
-				  (cons 'dummy-continuation argvals)
-				  argvals))))))
+		       (if cont
+			   ((rator-closure k args env) *coreeval-magic*
+			    'dummy-continuation-value argvals)
+			   ((rator-closure k args env) *coreeval-magic*
+			    (car argvals) (cdr argvals)))))))
 		((cps-begin head tail)
 		 (let ((head-closure (walk head))
 		       (tail-closure (walk tail)))
@@ -207,6 +234,8 @@
 		       (true-closure (walk true))
 		       (false-closure (walk false)))
 		   (lambda (k args env)
-		     (if (test-closure k args env)
-			 (true-closure k args env)
-			 (false-closure k args env))))))))
+		     (let ((test-result (test-closure k args env)))
+		       (debug-pretty-print `(if ,test-result))
+		       (if test-result
+			   (true-closure k args env)
+			   (false-closure k args env)))))))))

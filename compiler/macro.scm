@@ -46,10 +46,7 @@
 		 'code (cdr clause)))
 
     (define (build-and-define-macro name kind transformer)
-      (%define-macro-transformer name kind
-				 (let ((p (core-scheme-eval transformer)))
-				   (lambda args
-				     (apply p (lambda (dummy-k result) result) args))))
+      (%define-macro-transformer name kind (core-scheme-eval transformer))
       (make-defmacro name kind transformer))
 
     (lambda (expr)
