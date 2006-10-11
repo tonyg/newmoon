@@ -438,7 +438,7 @@
 			 `((ldarg args)
 			   (ldlen)
 			   (ldc.i4 ,arity)
-			   (blt.un tooFewArguments)
+			   (blt tooFewArguments)
 
 			   (ldsfld ,*il-null-field*)
 			   (stloc restarg)
@@ -451,7 +451,7 @@
 			   consLoopTop
 			   (ldloc counter)
 			   (ldc.i4 ,arity)
-			   (blt.un consLoopDone)
+			   (blt consLoopDone)
 
 			   (ldarg args)
 			   (ldloc counter)
