@@ -15,8 +15,12 @@ namespace Newmoon {
 	}
 
 	public Binding ResolveBindingCell(string name, string kind) {
+            return ResolveBindingCell(name, kind, true);
+        }
+
+	public Binding ResolveBindingCell(string name, string kind, bool complainIfMissing) {
 	    // Until we get proper modules with require and stuff.
-	    return env.ResolveBindingCell(name, kind);
+	    return env.ResolveBindingCell(name, kind, complainIfMissing);
 	}
 
 	public string Name {

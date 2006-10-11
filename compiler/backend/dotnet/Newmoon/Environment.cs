@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.IO;
 using System.Collections;
 using System.Reflection;
@@ -24,7 +25,7 @@ namespace Newmoon {
 	    description = new SchemeString("Newmoon.Environment("+desc+")");
 	}
 
-	public Binding ResolveBindingCell(string name, string kind) {
+	public Binding ResolveBindingCell(string name, string kind, bool complainIfMissing) {
 	    Binding result = null;
 	    if (bindings.Contains(name)) {
 		result = (Binding) bindings[name];
@@ -33,6 +34,10 @@ namespace Newmoon {
 					"; got "+result.kind);
 		}
 	    } else {
+                if (complainIfMissing) {
+                    System.Console.Error.WriteLine(";; Warning: Uninitialized \"" +
+                                                   kind + "\" binding: " + name);
+                }
 		Binding b = new Binding(name, kind);
 		bindings[name] = b;
 		result = b;
@@ -45,9 +50,10 @@ namespace Newmoon {
 					  string kind,
 					  object val)
 	{
+            System.Console.WriteLine(";; Installing \"" + kind + "\" binding: "+name);
 	    switch (kind) {
 	      case "global": {
-		  Binding b = mod.ResolveBindingCell((string) name, kind);
+		  Binding b = mod.ResolveBindingCell((string) name, kind, false);
 		  b.value = val;
 		  break;
 	      }
@@ -56,6 +62,10 @@ namespace Newmoon {
 		  //System.Console.WriteLine(";; Installing primitive: "+val); %%%
 		  break;
 	      }
+
+              case "macro": {
+                  break;
+              }
 
 	      default:
 		  throw new Exception("Unsupported binding-kind "+kind+" for "+name);
