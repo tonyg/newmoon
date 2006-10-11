@@ -1,4 +1,6 @@
-"true" "-*- scheme -*-";exec env mzscheme -v -f "$0" -e "(apply newmoon-main (vector->list argv))" -- "$@"
+"true" "-*- scheme -*-";exec env mzscheme -mv -f "$0" -e "(apply newmoon-main (vector->list argv))" -- "$@"
+(display ";; This is newmoon")
+(newline)
 
 (parameterize ((current-inspector (make-inspector)))
   (load "support/mzscheme.scm")
