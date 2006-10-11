@@ -64,6 +64,7 @@
 	(set! counter (+ counter 1))
 	(receiver c)))))
 
+;; Must match Newmoon.Environment.Mangle(string) in Environment.cs
 (define (mangle-id sym-or-str)
   (let ((str (if (symbol? sym-or-str) (symbol->string sym-or-str) sym-or-str)))
     (list->string

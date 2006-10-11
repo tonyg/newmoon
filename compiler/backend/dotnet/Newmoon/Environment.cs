@@ -85,6 +85,26 @@ namespace Newmoon {
 	    }
 	}
 
+        // Must match mangle-id in dotnet-backend.scm
+        public string Mangle(string sym) {
+            StringBuilder b = new StringBuilder();
+            b.Append("N_");
+            foreach (char c in sym) {
+                if (char.IsLetter(c) || char.IsDigit(c)) {
+                    b.Append(c);
+                } else {
+                    if (c == '-') {
+                        b.Append("__");
+                    } else {
+                        b.Append("_x"); 
+                        b.Append(string.Format("{0:x}", (int) c));
+                        b.Append("_");
+                    }
+                }
+            }
+            return b.ToString();
+        }
+
 	public Module InvokeModule(string arg) {
 	    string modpath = Path.ChangeExtension(arg, "dll");
 	    string modname = Path.GetFileNameWithoutExtension(arg);
@@ -103,7 +123,7 @@ namespace Newmoon {
 		throw new Exception("Could not load assembly "+modpath);
 	    }
 
-	    Type t = a.GetType("Newmoon.CompiledModules."+modname+"._"+modname);
+	    Type t = a.GetType("Newmoon.CompiledModules."+Mangle(modname)+".Statics");
 	    if (t == null) {
 		throw new Exception("Couldn't resolve Scheme entrypoint in "+modpath);
 	    }
