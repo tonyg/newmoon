@@ -31,6 +31,13 @@
 (define compiler$make-program (make-parameter #f))
 (define compiler$target-namespace (make-parameter #f))
 
+(define (debug-mode=? mode)
+  ;; Really, main$debug should be a set of symbols, to allow more than
+  ;; one mode at once.
+  (and (main$debug)
+       (string? (main$debug))
+       (string=? (main$debug) (symbol->string mode))))
+
 (define (replace-filename-extension filename new-extension)
   (cond
    ((string-index-right filename #\.) =>

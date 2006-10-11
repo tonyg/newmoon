@@ -9,12 +9,25 @@
   (define interactive #f)
   (define mode 'compiling)
 
+  (define (extract-debug-settings arg)
+    (let ((setting (substring arg 2 (string-length arg))))
+      (if (string=? setting "")
+	  'sequence-phases
+	  setting)))
+
+  (define (update-and-summarise-debug! new-value)
+    (main$debug new-value)
+    (display ";; Setting debug mode to ")
+    (display new-value)
+    (display ".")
+    (newline))
+
   (define (process-argument arg rest)
     (if (< (string-length arg) 2)
 	(error "Command-line switches look like '-x' where is the switch identifier.")
 	(case (string-ref arg 1)
-	  ((#\d) (main$debug #t) rest)
-	  ((#\D) (main$debug #f) rest)
+	  ((#\d) (update-and-summarise-debug! (extract-debug-settings arg)) rest)
+	  ((#\D) (update-and-summarise-debug! #f) rest)
 	  ((#\p) (main$libpath (cons (car rest) (main$libpath))) (cdr rest))
 	  ((#\b) (compiler$without-basic-libraries #t) rest)
 	  ((#\B) (compiler$without-basic-libraries #f) rest)
