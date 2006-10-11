@@ -71,6 +71,26 @@ namespace Newmoon {
 	}
     }
 
+    public class ApplyTailClosure: TailClosure {
+        public ApplyTailClosure(): base(null) {}
+
+        public override object ApplyVarargs(Continuation k, object[] args) {
+            Closure proc = (Closure) args[0];
+            List tailList = (List) args[args.Length - 1];
+            int extraCount = args.Length - 2;
+
+            object[] newArgs = new object[tailList.ListLength() + extraCount];
+            for (int i = 0; i < extraCount; i++) {
+                newArgs[i] = args[i + 1];
+            }
+            int pos = extraCount;
+            foreach (object e in tailList) {
+                newArgs[pos++] = e;
+            }
+            return proc.ApplyVarargs(k, newArgs);
+        }
+    }
+
     public class ToplevelContinuation: Continuation {
 	public ToplevelContinuation(Module module): base(module) {}
 
