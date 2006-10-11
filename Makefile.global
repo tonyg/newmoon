@@ -40,3 +40,11 @@ else
 	@echo 'Variable $$DEV_TREE not set.'
 	false
 endif
+
+%.dll: %.scm
+ifdef DEV_TREE
+	$(DEV_TREE)/compiler/newmoon-mz -X $<
+else
+	@echo 'Variable $$DEV_TREE not set.'
+	false
+endif

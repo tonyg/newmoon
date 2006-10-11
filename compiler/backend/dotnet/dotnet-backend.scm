@@ -848,8 +848,11 @@
 				" to executable\n"
 				" to library\n")))
     (if (not (call-external-program (or (getenv "NEWMOON_ILASM")
-					(error
-					 "The environment variable NEWMOON_ILASM is not set"))
+					(find-executable-path "ilasm")
+					(error (string-append
+						"The environment variable NEWMOON_ILASM"
+						" is not set, and 'ilasm' was not found"
+						" on the $PATH.")))
 				    (if (compiler$make-program) "/exe" "/dll")
 				    output-filename))
 	(error "Call to external assembler failed - is $NEWMOON_ILASM correct?"))

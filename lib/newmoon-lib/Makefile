@@ -4,6 +4,3 @@ include ../../Makefile.global
 
 basic-library.dll: basic-library.scm
 	(cd ../../compiler; ./newmoon-mz -b -N "basic-library" -X ../lib/newmoon-lib/basic-library.scm)
-
-%.dll: %.scm
-	(cd ../../compiler; ./newmoon-mz -N "$*" ../lib/newmoon-lib/$<)

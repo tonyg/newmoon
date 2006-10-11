@@ -14,11 +14,24 @@
 	 (lib "process.ss")
 	 (lib "etc.ss"))
 
+(define (complete-path p)
+  (let ((reldir (current-load-relative-directory)))
+    (cond
+     (reldir (path->complete-path p reldir))
+     ((string? p) (string->path p))
+     (else p))))
+
 (define-syntax include
   (lambda (x)
+    (define (complete-path p)
+      (let ((reldir (current-load-relative-directory)))
+	(cond
+	 (reldir (path->complete-path p reldir))
+	 ((string? p) (string->path p))
+	 (else p))))
     (define read-file
       (lambda (fn k)
-        (let ((p (open-input-file fn)))
+        (let ((p (open-input-file (complete-path fn))))
           (let f ()
             (let ((x (read p)))
               (if (eof-object? x)
@@ -37,7 +50,7 @@
 		    "newmoon-lib/"
 		    (string-append (string-join collection-path "/") "/")))
 	 (frag (string-append cpath filename)))
-    (let loop ((p (main$libpath)))
+    (let loop ((p (map (lambda (p1) (path->string (complete-path p1))) (main$libpath))))
       (if (null? p)
 	  (error "Could not resolve-library-path" filename collection-path)
 	  (let* ((path (car p))

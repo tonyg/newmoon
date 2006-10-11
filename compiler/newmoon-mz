@@ -1,13 +1,6 @@
-"true" "-*- scheme -*-";exec env mzscheme -mv -f "$0" -e "(apply newmoon-main (vector->list argv))" -- "$@"
-(display ";; This is newmoon")
-(newline)
+"true" "-*- scheme -*-";exec env mzscheme -mv -f "$0" -e "(apply newmoon-main \"`dirname $0`\" (vector->list argv))" -- "$@"
 
-(parameterize ((current-inspector (make-inspector)))
-  (load "support/mzscheme.scm")
-  (load "main.scm")
-  (load "backend/dotnet/dotnet-backend.scm"))
-
-(define (newmoon-main . args)
+(define (newmoon-main raw-script-directory . args)
   (define interactive #f)
   (define mode 'compiling)
 
@@ -62,6 +55,20 @@
     (let* ((expr `(begin ,@(call-with-input-file filename read-all-sexps))))
       (pretty-print `(EVALUATING ,expr))
       (pretty-print `(RESULT ,(core-scheme-eval expr)))))
+
+  (define script-directory (path->string (path->complete-path raw-script-directory)))
+
+  ;;---------------------------------------------------------------------------
+  ;; Main program starts
+
+  (display (string-append ";; This is newmoon, running from "script-directory))
+  (newline)
+
+  (current-load-relative-directory script-directory)
+  (parameterize ((current-inspector (make-inspector)))
+    (load-relative "support/mzscheme.scm")
+    (load-relative "main.scm")
+    (load-relative "backend/dotnet/dotnet-backend.scm"))
 
   (let loop ((args args))
     (cond
