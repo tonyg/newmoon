@@ -8,6 +8,7 @@
  ((lambda ()
     (define (definer name kind value)
       (%assemble (name kind value result) (name kind value 'dummy)
+	(c "defineGlobal("name", "kind", "value");")
 	(scheme (%define-global-variable name value))
 	(dotnet (ldarg.0)
 		(ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
@@ -27,6 +28,7 @@
 
 (define (null? x)
   (%assemble (x nil t f) (x '() #t #f)
+    (c "return(scheme_boolean(isnil("x")))")
     (scheme (null? x))
     (dotnet ($ x)
 	    ($ nil)
@@ -47,6 +49,7 @@
 
 (define (pair? x)
   (%assemble (x t f) (x #t #f)
+    (c "return(scheme_boolean(ispair("x")))")
     (scheme (pair? x))
     (dotnet ($ x)
 	    (isinst "class [Newmoon]Newmoon.Pair")
@@ -67,6 +70,8 @@
 
 (define (cons a d)
   (%assemble (a d) (a d)
+    (c "defstorage(newpair, pair, mkpair("a", "d"));"
+       "return(addressof(newpair));")
     (scheme (cons a d))
     (dotnet ($ a)
 	    ($ d)
@@ -79,6 +84,7 @@
 
 (define (car x)
   (%assemble (x) (x)
+    (c "return(((pair *) "x")->car);")
     (scheme (car x))
     (dotnet ($ x)
 	    (castclass "class [Newmoon]Newmoon.Pair")
@@ -89,6 +95,7 @@
   
 (define (cdr x)
   (%assemble (x) (x)
+    (c "return(((pair *) "x")->cdr);")
     (scheme (cdr x))
     (dotnet ($ x)
 	    (castclass "class [Newmoon]Newmoon.Pair")
@@ -99,6 +106,7 @@
 
 (define (vector? x)
   (%assemble (x t f) (x #t #f)
+    (c "die(\"unimplemented\");")
     (scheme (vector? x))
     (dotnet ($ x)
 	    (isinst "object[]")
@@ -119,6 +127,7 @@
 
 (define (symbol? x)
   (%assemble (x t f) (x #t #f)
+    (c "die(\"unimplemented\");")
     (scheme (symbol? x))
     (dotnet ($ x)
 	    (isinst "string")
@@ -139,6 +148,7 @@
 
 (define (eq? x y)
   (%assemble (x y t f) (x y #t #f)
+    (c "die(\"unimplemented\");")
     (scheme (eq? x y))
     (dotnet ($ x)
 	    ($ y)
@@ -159,6 +169,7 @@
 
 (define (= x y)
   (%assemble (x y) (x y)
+    (c "die(\"unimplemented\");")
     (scheme (= x y))
     (dotnet ($ x)
 	    ($ y)
@@ -174,6 +185,7 @@
 
 (define (> x y)
   (%assemble (x y) (x y)
+    (c "die(\"unimplemented\");")
     (scheme (> x y))
     (dotnet ($ x)
 	    ($ y)
@@ -189,6 +201,7 @@
 
 (define (+ x y)
   (%assemble (x y) (x y)
+    (c "die(\"unimplemented\");")
     (scheme (+ x y))
     (dotnet ($ x)
 	    ($ y)
@@ -201,6 +214,7 @@
 
 (define (- x y)
   (%assemble (x y) (x y)
+    (c "die(\"unimplemented\");")
     (scheme (- x y))
     (dotnet ($ x)
 	    ($ y)
@@ -210,12 +224,6 @@
 	 ($ y)
 	 (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
 	 (invoke "sisc.data.Quantity" "sub" "sisc.data.Quantity" ("sisc.data.Quantity") virtual))))
-
-(define (length x)
-  (let loop ((x x) (count 0))
-    (if (null? x)
-	count
-	(loop (cdr x) (+ count 1)))))
 
 (define (caar x) (car (car x)))
 (define (cadr x) (car (cdr x)))
@@ -293,9 +301,11 @@
 (define (gensym . maybe-prefix)
   (if (null? maybe-prefix)
       (%assemble () ()
+	(c "die(\"unimplemented\");")
 	(scheme (gensym))
 	(dotnet (call "string class [Newmoon]Newmoon.Primitive::Gensym()")))
       (%assemble (prefix) ((car maybe-prefix))
+	(c "die(\"unimplemented\");")
 	(scheme (gensym prefix))
 	(dotnet ($ prefix)
 		(callvirt "instance string class [mscorlib]System.Object::ToString()")
@@ -304,6 +314,7 @@
 (begin-for-syntax
  (define apply
    (%assemble () ()
+     (c "die(\"unimplemented\");")
      (scheme apply)
      (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
 
@@ -356,6 +367,12 @@
 
 (defmacro let args
   (apply sys$let-transformer args))
+
+(define (length x)
+  (let loop ((x x) (count 0))
+    (if (null? x)
+	count
+	(loop (cdr x) (+ count 1)))))
 
 (defmacro let* (bindings . body)
   (if (null? bindings)
@@ -469,23 +486,27 @@
 
 (define (->symbol x)
   (%assemble (x) (x)
+    (c "die(\"unimplemented\");")
     (dotnet ($ x)
 	    (callvirt "instance string [mscorlib]System.Object::ToString()"))))
 
 (define (string->symbol x)
   (%assemble (x) (x)
+    (c "die(\"unimplemented\");")
     (dotnet ($ x)
 	    (castclass "class [Newmoon]Newmoon.SchemeString")
 	    (call "instance string [Newmoon]Newmoon.SchemeString::ToString()"))))
 
 (define (symbol->string x)
   (%assemble (x) (x)
+    (c "die(\"unimplemented\");")
     (dotnet ($ x)
 	    (castclass "string")
 	    (newobj "instance void class [Newmoon]Newmoon.SchemeString::.ctor(string)"))))
 
 (define (vector->list x)
   (%assemble (x) (x)
+    (c "die(\"unimplemented\");")
     (dotnet ($ x)
 	    (castclass "object[]")
 	    (call "class [Newmoon]Newmoon.List class [Newmoon]Newmoon.List::FromVector(object[])"))))
@@ -494,6 +515,7 @@
   (map1 symbol->string
 	(vector->list
 	 (%assemble (sym charstr) ((string->symbol s) charstr)
+	   (c "die(\"unimplemented\");")
 	   (dotnet ($ sym)
 		   ($ charstr)
 		   (castclass "class [Newmoon]Newmoon.SchemeString")
@@ -502,6 +524,7 @@
 
 (define (getenv name)
   (%assemble (name f) (name #f)
+    (c "die(\"unimplemented\");")
     (dotnet ($ name)
 	    (callvirt "instance string [mscorlib]System.Object::ToString()")
 	    (call "string [mscorlib]System.Environment::GetEnvironmentVariable(string)")
@@ -516,10 +539,12 @@
 
 (define (%%load-void)
   (%assemble () ()
+    (c "return(NULL);")
     (dotnet (ldnull))))
 
 (define (void-guard v g)
   (%assemble (v g) (v g)
+    (c "die(\"unimplemented\");")
     (dotnet ($ v)
 	    (brnull ld-g)
 	    ($ v)
@@ -530,6 +555,7 @@
 
 (define (%%dump val)
   (%assemble (val) (val)
+    (c "die(\"unimplemented\");")
     (scheme (display val))
     (dotnet ("// print assembly start")
 	    ($ val)
@@ -545,6 +571,7 @@
 
 (define (vector-length v)
   (%assemble (v) (v)
+    (c "die(\"unimplemented\");")
     (scheme (vector-length v))
     (dotnet ($ v)
 	    (castclass "object[]")
@@ -553,6 +580,7 @@
 
 (define (array-create-instance type len)
   (%assemble (type len) (type len)
+    (c "die(\"unimplemented\");")
     (dotnet ($ type)
 	    (castclass "class [mscorlib]System.Type")
 	    ($ len)
@@ -562,6 +590,7 @@
 
 (define (fx= x y)
   (%assemble (x y t f) (x y #t #f)
+    (c "die(\"unimplemented\");")
     (scheme (= x y))
     (dotnet ($ x)
 	    (unbox "int32")
@@ -578,6 +607,7 @@
 
 (define (vector-ref v i)
   (%assemble (v i) (v i)
+    (c "die(\"unimplemented\");")
     (scheme (vector-ref v i))
     (dotnet ($ v)
 	    (castclass "object[]")
@@ -588,6 +618,7 @@
 
 (define (vector-set! v i val)
   (%assemble (v i val) (v i val)
+    (c "die(\"unimplemented\");")
     (scheme (vector-ref v i))
     (dotnet ($ v)
 	    (castclass "object[]")
@@ -614,12 +645,14 @@
 
 (define (lookup-type str)
   (%assemble (sym) ((string->symbol str))
+    (c "die(\"unimplemented\");")
     (dotnet ($ sym)
 	    (castclass "string")
 	    (call "class [mscorlib]System.Type class [mscorlib]System.Type::GetType(string)"))))
 
 (define (string-join strs sepstr)
   (%assemble (strs sepstr) (strs sepstr)
+    (c "die(\"unimplemented\");")
     (dotnet ($ strs)
 	    (castclass "class [Newmoon]Newmoon.List")
 	    ($ sepstr)
@@ -638,6 +671,7 @@
 
 (define (error message . args)
   (%assemble (message args) (message args)
+    (c "die(\"unimplemented\");")
     (dotnet ($ message)
 	    ($ args)
 	    (castclass "class [Newmoon]Newmoon.List")
@@ -645,6 +679,7 @@
 
 (define (file-exists? x)
   (%assemble (x) (x)
+    (c "die(\"unimplemented\");")
     (dotnet ($ x)
 	    (callvirt "instance string [mscorlib]System.Object::ToString()")
 	    (call "bool class [mscorlib]System.IO.File::Exists(string)")
@@ -669,6 +704,7 @@
 
 (define (%%invoke-module s)
   (%assemble (s) (s)
+    (c "die(\"unimplemented\");")
     (dotnet (ldarg.0)
 	    (ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
 	    (call "instance class [Newmoon]Newmoon.Environment [Newmoon]Newmoon.Module::get_Env()")
@@ -678,6 +714,7 @@
 
 (define (%%get-entry-point m)
   (%assemble (m) (m)
+    (c "die(\"unimplemented\");")
     (dotnet ($ m)e
 	    (castclass "class [Newmoon]Newmoon.Module")
 	    (callvirt "instance class [Newmoon]Newmoon.Closure class [Newmoon]Newmoon.Module::GetEntryPoint()"))))
@@ -740,3 +777,7 @@
 (require (lib "r5rs-misc.scm"))
 (require (lib "r5rs-ports.scm"))
 (require (lib "r5rs-eval.scm"))
+
+;;; Local Variables:
+;;; eval: (put '%assemble 'scheme-indent-function 2)
+;;; End:
