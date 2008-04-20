@@ -68,7 +68,9 @@
   (parameterize ((current-inspector (make-inspector)))
     (load-relative "support/mzscheme.scm")
     (load-relative "main.scm")
-    (load-relative "backend/dotnet/dotnet-backend.scm"))
+    ;;(load-relative "backend/dotnet/dotnet-backend.scm")
+    (load-relative "backend/c/c-backend.scm")
+    )
 
   (let loop ((args args))
     (cond
