@@ -152,19 +152,28 @@
 			  (emit-vardef port 2) " {\n" ";\n" "} ")
     (emit port (node-get structdef 'structdef 'name)";\n\n")))
 
+(define (emit-function-header port functiondef)
+  (for-each (lambda (modifier) (emit port modifier" "))
+	    (node-get functiondef 'functiondef 'modifiers))
+  (emit-type port (node-get functiondef 'functiondef 'rettype))
+  (emit port " "(node-get functiondef 'functiondef 'name))
+  (emit-separated-list port
+		       (node-get functiondef 'functiondef 'formals)
+		       (emit-vardef port 0)
+		       "(" ", " "")
+  (if (node-get functiondef 'functiondef 'variadic?)
+      (emit port ", ...)")
+      (emit port ")")))
+
+(define (emit-functionproto port)
+  (lambda (functiondef)
+    (emit-function-header port functiondef)
+    (emit port ";\n")))
+
 (define (emit-functiondef port)
   (lambda (functiondef)
-    (for-each (lambda (modifier) (emit port modifier" "))
-	      (node-get functiondef 'functiondef 'modifiers))
-    (emit-type port (node-get functiondef 'functiondef 'rettype))
-    (emit port " "(node-get functiondef 'functiondef 'name))
-    (emit-separated-list port
-			 (node-get functiondef 'functiondef 'formals)
-			 (emit-vardef port 0)
-			 "(" ", " "")
-    (if (node-get functiondef 'functiondef 'variadic?)
-	(emit port ", ...) {\n")
-	(emit port ") {\n"))
+    (emit-function-header port functiondef)
+    (emit port " {\n")
     (for-each (lambda (localdef)
 		(emit port "  ")
 		(emit-type port (cadr localdef))
@@ -262,16 +271,14 @@
 		     (string->list str)))))
 
 (define (compiler-back-end-phases input-filename frontend-result)
-  (let* ((next-lambda-name (make-counter (lambda (c) (string-append "Lambda_" (number->string c)))))
-	 (next-ctor-name (make-counter (lambda (c) (string-append "Ctor_" (number->string c)))))
-	 (next-envdef-name (make-counter (lambda (c) (string-append "Env_" (number->string c)))))
+  (let* ((next-lambda-name (make-counter (lambda (c) (string-append "Fn" (number->string c)))))
+	 (next-envdef-name (make-counter (lambda (c) (string-append "Env" (number->string c)))))
 	 (next-label (make-counter (lambda (c) (string-append "L" (number->string c)))))
 	 (next-temp (make-counter (lambda (c) (string-append "T" (number->string c)))))
-	 (next-literal (make-counter (lambda (c) (string-append "Lit_" (number->string c)))))
+	 (next-literal (make-counter (lambda (c) (string-append "Lit" (number->string c)))))
 	 (assembly-name (if (compiler$target-namespace)
 			    (compiler$target-namespace)
 			    (replace-filename-extension input-filename "")))
-	 (fq-namespace (string-append "Newmoon_CompiledModules_"(mangle-id assembly-name)))
 	 (output-filename (replace-filename-extension input-filename ".c"))
 	 (literal-table '())
 	 (global-table (make-hash-table))
@@ -292,7 +299,7 @@
 
     (define (record-literal! key literalvalue-thunk)
       (cond
-       ((assoc key literal-table) => cadr)
+       ((and key (assoc key literal-table)) => cadr)
        (else
 	(let ((name (next-literal)))
 	  (set! literal-table (cons (list key name (literalvalue-thunk)) literal-table))
@@ -313,22 +320,25 @@
 
     (define (gen-literal-initialiser fn value)
       (cond
-       ((number? value) (if (and (exact? value)
-				 (integer? value))
-			    `(litint ,value)
-			    (alloctemp fn 'floatholder `(mkfloatholder ,value))))
        ((symbol? value) `(intern ,(escape-string (symbol->string value))))
-       ((string? value) (alloctemp fn 'stringholder `(mkstr ,(escape-string value))))
-       ((boolean? value) (if value `(mktrue) `(mkfalse)))
-       ((char? value) `(mkchar ,(char->integer value)))
-       ((null? value) `(mknull))
+       ((string? value)
+	(let ((name (next-temp)))
+	  (add-instr! fn `(defbinary ,name ,(string-length value) ,(escape-string value)))
+	  name))
        ((pair? value) (alloctemp fn 'pair `(mkpair ,(car value) ,(cdr value))))
        ((vector? value)
 	(let ((len (vector-length value)))
 	  (let ((vec (alloctemp fn '(* oop) `(mkvec ,len))))
 	    (do ((i 0 (+ i 1)))
 		((= i len))
-	      (add-instr! fn `(vecset ,vec ,i ,(vector-ref value i)))))))
+	      (add-instr! fn `(vecset ,vec ,i ,(vector-ref value i))))
+	    vec)))
+       ((node? value)
+	(node-match value
+		    ((constant-closure lambdaname)
+		     (let ((name (next-temp)))
+		       (add-instr! fn `(allocenv constant_closure_env 0 ,lambdaname ,name))
+		       name))))
        (else
 	(error "gen-literal-initialiser: unimplemented literal kind" value))))
 
@@ -352,11 +362,19 @@
 	   ((node-get (car formals) 'arginfo 'is-rest) (formals->argdefs (cdr formals)))
 	   (else (cons `(,(arginfo->id (car formals)) oop) (formals->argdefs (cdr formals))))))
 
-	(record-structure! (make-structdef envdefname `((code newmoon_code)
+	(record-structure! (make-structdef envdefname `((header object_header)
+							(code newmoon_code)
 							,@(map cdr capture-map))))
 
 	;; Construct closure instance
-	(add-instr! parent-fn `(allocenv ,envdefname ,lambdaname ,newcloname))
+	(if (null? captures)
+	    (set! newcloname (record-literal! #f
+					      (lambda () (make-node 'constant-closure
+								    'lambdaname lambdaname))))
+	    (add-instr! parent-fn `(allocenv ,envdefname
+					     ,(length capture-map)
+					     ,lambdaname
+					     ,newcloname)))
 	(for-each (lambda (capture capture-instr)
 		    (let* ((cap-cont (node-get (node-get capture 'capture 'arginfo)
 					       'arginfo 'cont))
@@ -409,6 +427,13 @@
 	  (record-literal! value (lambda ()
 				   (list->vector
 				    (map gen-literal (vector->list value))))))
+	 ((number? value) (if (and (exact? value)
+				   (integer? value))
+			      `(litint ,value)
+			      (alloctemp fn 'floatholder `(mkfloatholder ,value))))
+	 ((boolean? value) (if value `(mktrue) `(mkfalse)))
+	 ((char? value) `(mkchar ,(char->integer value)))
+	 ((null? value) `(mknull))
 	 (else
 	  (record-literal! value (lambda () value)))))
 
@@ -539,13 +564,13 @@
 	(add-instrs! entry `((return (primcall "GetEntryPoint"))))))
 
     ;;---------------------------------------------------------------------------
-    (for-each display (list ";; dotnet backend compiling to namespace "fq-namespace"\n"))
+    (for-each display (list ";; GCC backend compiling to "assembly-name"\n"))
     (gen-module-entry-point frontend-result)
 
     (if (compiler$make-program)
 	(gen-program-entry-point))
 
-    (for-each display (list ";; dotnet backend generating "output-filename"\n"))
+    (for-each display (list ";; GCC backend generating "output-filename"\n"))
     (delete-file-if-exists output-filename)
     (call-with-output-file output-filename
       (lambda (o)
@@ -578,20 +603,28 @@
 		    (reverse literal-table))
 	  (add-instr! literal-initialiser `(callfun k 1 (mknull))))
 	(for-each (emit-structdef o) all-structures)
+	(for-each (emit-functionproto o) all-functions)
+	(emit o "\n")
 	(for-each (emit-functiondef o) all-functions)
 	))
 
-    (for-each display (list ";; dotnet backend compiling "output-filename
+    (for-each display (list ";; GCC backend compiling "output-filename
 			    (if (compiler$make-program)
 				" to executable\n"
 				" to library\n")))
-;;     (if (not (call-external-program (or (getenv "NEWMOON_ILASM")
-;; 					(find-executable-path "ilasm")
-;; 					(error (string-append
-;; 						"The environment variable NEWMOON_ILASM"
-;; 						" is not set, and 'ilasm' was not found"
-;; 						" on the $PATH.")))
-;; 				    (if (compiler$make-program) "/exe" "/dll")
-;; 				    output-filename))
-;; 	(error "Call to external assembler failed - is $NEWMOON_ILASM correct?"))
+    (if (not (call-external-program (or (getenv "NEWMOON_GCC")
+ 					(find-executable-path "gcc")
+ 					(error (string-append
+ 						"The environment variable NEWMOON_GCC"
+ 						" is not set, and 'gcc' was not found"
+ 						" on the $PATH.")))
+				    "-O3"
+				    "-fomit-frame-pointer"
+				    "-foptimize-sibling-calls"
+				    "-fno-pic"
+				    "-S"
+				    "-o" (replace-filename-extension output-filename ".s")
+ 				    ;;(if (compiler$make-program) "/exe" "/dll")
+ 				    output-filename))
+ 	(error "Call to external compiler failed - is $NEWMOON_GCC correct?"))
     ))
