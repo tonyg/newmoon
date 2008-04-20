@@ -754,6 +754,9 @@
 	       (,newrest (if (null? ,restvar) ,restvar (cdr ,restvar))))
 	   (let-optionals ,newrest ,(cdr vardefs) ,@body)))))
 
+(defmacro let-optionals* body
+  (error "unimplemented - let-optionals*"))
+
 (define (make-promise thunk)
   (let ((result-ready? #f)
 	(result #f))
