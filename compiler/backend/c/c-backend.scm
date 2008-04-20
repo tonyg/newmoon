@@ -524,9 +524,14 @@
 	(gen tail))
 
       (define (gen-if test true false)
-	`(conditional ,(gen test)
-		      ,(gen true)
-		      ,(gen false)))
+	(let ((tlabel (next-temp))
+	      (flabel (next-temp)))
+	  (add-instrs! fn `((conditional ,(gen test) ,tlabel ,flabel)
+			    (deflabel ,tlabel)))
+	  (add-instrs! fn `(,(gen true)
+			    (deflabel ,flabel)))
+	  (add-instrs! fn `(,(gen false)))
+	  `(emptystmt)))
 
       (define (gen node)
 	(node-match node
@@ -622,6 +627,9 @@
 				    "-fomit-frame-pointer"
 				    "-foptimize-sibling-calls"
 				    "-fno-pic"
+				    (string-append "-I"
+						   (path->string (current-load-relative-directory))
+						   "/backend/c")
 				    "-S"
 				    "-o" (replace-filename-extension output-filename ".s")
  				    ;;(if (compiler$make-program) "/exe" "/dll")

@@ -78,7 +78,11 @@ typedef enum {
   var = (oop) &box__ ## var;
 #define setbox(var, val) (((box *) var)->value = (val))
 #define settemp(var, val) var = val
-#define conditional(test, t, f) if (test) { t; } else { f; }
+#define conditional(test, t, f)			\
+  if (test) { goto conditional__ ## t; }	\
+  else { goto conditional__ ## f; }
+#define deflabel(l) conditional__ ## l:
+#define emptystmt()
 #define defstorage(varname, type, initialiser) type varname = initialiser
 #define mkpair(a, d) { MAKE_GC_INFO(TYPE_PAIR, 2, 1), a, d }
 #define deftemp(varname, e) oop varname = e
