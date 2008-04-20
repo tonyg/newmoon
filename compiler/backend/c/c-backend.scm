@@ -260,7 +260,7 @@
    (cons #\"
 	 (fold-right (lambda (ch acc)
 		       (let ((i (char->integer ch)))
-			 (if (or (< i 32) (>= i 128)) ;; assume ASCII %%%
+			 (if (or (< i 32) (= i 92) (>= i 128)) ;; assume ASCII %%%
 			     (append '(#\\)
 				     (string->list (zero-pad-left (number->string i 8) 3))
 				     acc)
