@@ -105,6 +105,9 @@
 					   'formals (cadr expr)
 					   'actuals (map expand (caddr expr))
 					   'code (map parse-backend-asm (cdddr expr))))
+	      ((%backend)	(make-node 'backend
+					   'backend-name (cadr expr)
+					   'arguments (cddr expr)))
 	      ((define)		(if (pair? (cadr expr))
 				    (make-node 'define
 					       'name (caadr expr)

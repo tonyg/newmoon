@@ -1,6 +1,6 @@
-TARGETS = basic-library.dll r5rs-misc.dll r5rs-ports.dll r5rs-eval.dll
+TARGETS = basic-library.$(SCMOEXT) r5rs-misc.$(SCMOEXT) r5rs-ports.$(SCMOEXT) r5rs-eval.$(SCMOEXT)
 
 include ../../Makefile.global
 
-basic-library.dll: basic-library.scm
+basic-library.$(SCMOEXT): basic-library.scm
 	(cd ../../compiler; ./newmoon-mz -b -N "basic-library" -X ../lib/newmoon-lib/basic-library.scm)

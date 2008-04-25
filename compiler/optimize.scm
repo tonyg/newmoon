@@ -24,7 +24,7 @@
 		 ((cps-begin) (compiler-assert
 			       begin-should-never-be-head-of-itself
 			       #f))
-		 ((cps-apply cps-if cps-set cps-asm) node)
+		 ((cps-apply cps-if cps-set cps-asm cps-backend) node)
 		 (else
 		  (for-each display
 			    (list ";; Warning: unknown node-type in remove-begin-head-noops: "

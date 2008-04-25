@@ -32,6 +32,7 @@
       (set (name ,symbol?) (expr core-scheme))
       (define (name ,symbol?) (expr core-scheme))
       (asm (formals (%list-of ,symbol?)) (actuals (%list-of core-scheme)) (code assembly))
+      (backend (backend-name ,symbol?) (arguments (%list-of #t)))
       ))
 
     (ds
@@ -45,6 +46,7 @@
       (ds-if (test ds) (true ds) (false ds))
       (ds-set (name ,symbol?) (expr ds))
       (ds-asm (formals (%list-of ,symbol?)) (actuals (%list-of ds)) (code assembly))
+      (ds-backend (backend-name ,symbol?) (arguments (%list-of #t)))
       ))
 
     (cps-value
@@ -57,6 +59,7 @@
 		  (varargs ,boolean?)
 		  (expr cps-exp))
       (cps-asm (formals (%list-of ,symbol?)) (actuals (%list-of cps-value)) (code assembly))
+      (cps-backend (backend-name ,symbol?) (arguments (%list-of #t)))
       (cps-set (name ,symbol?) (expr cps-value))
 
       (cps-begin (head cps-value) (tail cps-value))
@@ -92,6 +95,7 @@
 		  (globals (%list-of ,symbol?))
 		  (expr cps2-exp))
       (cps-asm (formals (%list-of ,symbol?)) (actuals (%list-of cps2-value)) (code assembly))
+      (cps-backend (backend-name ,symbol?) (arguments (%list-of #t)))
       (cps-local-set (name ,symbol?) (arginfo arginfo) (location local-location) (expr cps2-value))
       (cps-global-set (name ,symbol?) (expr cps2-value))
 
@@ -109,7 +113,7 @@
 
 (define (core-scheme-child-attrs node)
   (case (node-kind node)
-    ((lit void var) '())
+    ((lit void var backend) '())
     ((lambda) 'body)
     ((apply) '(rator . rands))
     ((begin) 'exprs)
@@ -120,7 +124,7 @@
 
 (define (ds-child-attrs node)
   (case (node-kind node)
-    ((ds-lit ds-void ds-var) '())
+    ((ds-lit ds-void ds-var ds-backend) '())
     ((ds-lambda) '(expr))
     ((ds-apply) '(rator . rands))
     ((ds-begin) '(head tail))
@@ -131,7 +135,7 @@
 
 (define (cps-child-attrs node)
   (case (node-kind node)
-    ((cps-lit cps-void cps-var) '())
+    ((cps-lit cps-void cps-var cps-backend) '())
     ((cps-lambda) '(expr))
     ((cps-asm) 'actuals)
     ((cps-set) '(expr))
@@ -142,7 +146,7 @@
 
 (define (cps2-child-attrs node)
   (case (node-kind node)
-    ((cps-lit cps-void cps-local-get cps-global-get) '())
+    ((cps-lit cps-void cps-local-get cps-global-get cps-backend) '())
     ((cps-lambda) '(expr))
     ((cps-asm) 'actuals)
     ((cps-local-set cps-global-set) '(expr))

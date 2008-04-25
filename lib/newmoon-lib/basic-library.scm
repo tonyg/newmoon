@@ -106,7 +106,7 @@
 
 (define (vector? x)
   (%assemble (x t f) (x #t #f)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean(isvector("x")))")
     (scheme (vector? x))
     (dotnet ($ x)
 	    (isinst "object[]")
@@ -127,7 +127,7 @@
 
 (define (symbol? x)
   (%assemble (x t f) (x #t #f)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean(issymbol("x")))")
     (scheme (symbol? x))
     (dotnet ($ x)
 	    (isinst "string")
@@ -148,7 +148,7 @@
 
 (define (eq? x y)
   (%assemble (x y t f) (x y #t #f)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean("x" == "y"))")
     (scheme (eq? x y))
     (dotnet ($ x)
 	    ($ y)
@@ -169,7 +169,7 @@
 
 (define (= x y)
   (%assemble (x y) (x y)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean(numeric_equality("x", "y")))")
     (scheme (= x y))
     (dotnet ($ x)
 	    ($ y)
@@ -185,7 +185,7 @@
 
 (define (> x y)
   (%assemble (x y) (x y)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean(numeric_gt("x", "y")))")
     (scheme (> x y))
     (dotnet ($ x)
 	    ($ y)
@@ -201,7 +201,7 @@
 
 (define (+ x y)
   (%assemble (x y) (x y)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean(numeric_plus("x", "y")))")
     (scheme (+ x y))
     (dotnet ($ x)
 	    ($ y)
@@ -214,7 +214,7 @@
 
 (define (- x y)
   (%assemble (x y) (x y)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean(numeric_minus("x", "y")))")
     (scheme (- x y))
     (dotnet ($ x)
 	    ($ y)
@@ -301,11 +301,11 @@
 (define (gensym . maybe-prefix)
   (if (null? maybe-prefix)
       (%assemble () ()
-	(c "die(\"unimplemented\");")
+	(c "return(gensym(\"g\"));")
 	(scheme (gensym))
 	(dotnet (call "string class [Newmoon]Newmoon.Primitive::Gensym()")))
       (%assemble (prefix) ((car maybe-prefix))
-	(c "die(\"unimplemented\");")
+	(c "return(gensym(safe_c_string("prefix")));")
 	(scheme (gensym prefix))
 	(dotnet ($ prefix)
 		(callvirt "instance string class [mscorlib]System.Object::ToString()")
@@ -314,7 +314,7 @@
 (begin-for-syntax
  (define apply
    (%assemble () ()
-     (c "die(\"unimplemented\");")
+     (c "return(apply_oop);")
      (scheme apply)
      (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
 
@@ -486,27 +486,27 @@
 
 (define (->symbol x)
   (%assemble (x) (x)
-    (c "die(\"unimplemented\");")
+    (c "return(intern_any("x"));")
     (dotnet ($ x)
 	    (callvirt "instance string [mscorlib]System.Object::ToString()"))))
 
 (define (string->symbol x)
   (%assemble (x) (x)
-    (c "die(\"unimplemented\");")
+    (c "return(intern(safe_c_string("x")));")
     (dotnet ($ x)
 	    (castclass "class [Newmoon]Newmoon.SchemeString")
 	    (call "instance string [Newmoon]Newmoon.SchemeString::ToString()"))))
 
 (define (symbol->string x)
   (%assemble (x) (x)
-    (c "die(\"unimplemented\");")
+    (c "return(symbol_name("x"));")
     (dotnet ($ x)
 	    (castclass "string")
 	    (newobj "instance void class [Newmoon]Newmoon.SchemeString::.ctor(string)"))))
 
 (define (vector->list x)
   (%assemble (x) (x)
-    (c "die(\"unimplemented\");")
+    (c "return(vector_to_list("x"));")
     (dotnet ($ x)
 	    (castclass "object[]")
 	    (call "class [Newmoon]Newmoon.List class [Newmoon]Newmoon.List::FromVector(object[])"))))
@@ -515,7 +515,7 @@
   (map1 symbol->string
 	(vector->list
 	 (%assemble (sym charstr) ((string->symbol s) charstr)
-	   (c "die(\"unimplemented\");")
+	   (c "return(string_split_by_chars("sym", "charstr"));")
 	   (dotnet ($ sym)
 		   ($ charstr)
 		   (castclass "class [Newmoon]Newmoon.SchemeString")
@@ -524,7 +524,13 @@
 
 (define (getenv name)
   (%assemble (name f) (name #f)
-    (c "die(\"unimplemented\");")
+    (c "char *val = getenv(safe_c_string("name"));"
+       "if (val == NULL) {"
+       "  return(mkfalse());"
+       "} else {"
+       "  defbinary(valoop, strlen(val), val);"
+       "  return(valoop);"
+       "}")
     (dotnet ($ name)
 	    (callvirt "instance string [mscorlib]System.Object::ToString()")
 	    (call "string [mscorlib]System.Environment::GetEnvironmentVariable(string)")
@@ -544,7 +550,7 @@
 
 (define (void-guard v g)
   (%assemble (v g) (v g)
-    (c "die(\"unimplemented\");")
+    (c "return("v" == NULL ? "g" : "v");")
     (dotnet ($ v)
 	    (brnull ld-g)
 	    ($ v)
@@ -555,7 +561,7 @@
 
 (define (%%dump val)
   (%assemble (val) (val)
-    (c "die(\"unimplemented\");")
+    (c "die(\"%%dump unimplemented\");")
     (scheme (display val))
     (dotnet ("// print assembly start")
 	    ($ val)
@@ -571,7 +577,8 @@
 
 (define (vector-length v)
   (%assemble (v) (v)
-    (c "die(\"unimplemented\");")
+    (c "if (!isvector("v")) { wrong_type(0); }"
+       "return(litint(oop_len("v")));")
     (scheme (vector-length v))
     (dotnet ($ v)
 	    (castclass "object[]")
@@ -580,7 +587,7 @@
 
 (define (array-create-instance type len)
   (%assemble (type len) (type len)
-    (c "die(\"unimplemented\");")
+    (c "die(\"array-create-instance unimplemented\");")
     (dotnet ($ type)
 	    (castclass "class [mscorlib]System.Type")
 	    ($ len)
@@ -590,7 +597,7 @@
 
 (define (fx= x y)
   (%assemble (x y t f) (x y #t #f)
-    (c "die(\"unimplemented\");")
+    (c "return(scheme_boolean("x" == "y" && isint("x")));")
     (scheme (= x y))
     (dotnet ($ x)
 	    (unbox "int32")
@@ -607,7 +614,11 @@
 
 (define (vector-ref v i)
   (%assemble (v i) (v i)
-    (c "die(\"unimplemented\");")
+    (c "int ival = DETAG("i");"
+       "if (!isvector("v")) { wrong_type(0); }"
+       "if (!isint("i")) { wrong_type(1); }"
+       "if (ival < 0 || ival >= oop_len("v")) { bad_index(); }"
+       "return(((vector *) "v")->data[ival]);")
     (scheme (vector-ref v i))
     (dotnet ($ v)
 	    (castclass "object[]")
@@ -618,7 +629,11 @@
 
 (define (vector-set! v i val)
   (%assemble (v i val) (v i val)
-    (c "die(\"unimplemented\");")
+    (c "int ival = DETAG("i");"
+       "if (!isvector("v")) { wrong_type(0); }"
+       "if (!isint("i")) { wrong_type(1); }"
+       "if (ival < 0 || ival >= oop_len("v")) { bad_index(); }"
+       "return(((vector *) "v")->data[ival] = "val");")
     (scheme (vector-ref v i))
     (dotnet ($ v)
 	    (castclass "object[]")
@@ -645,14 +660,14 @@
 
 (define (lookup-type str)
   (%assemble (sym) ((string->symbol str))
-    (c "die(\"unimplemented\");")
+    (c "die(\"lookup-type unimplemented\");")
     (dotnet ($ sym)
 	    (castclass "string")
 	    (call "class [mscorlib]System.Type class [mscorlib]System.Type::GetType(string)"))))
 
 (define (string-join strs sepstr)
   (%assemble (strs sepstr) (strs sepstr)
-    (c "die(\"unimplemented\");")
+    (c "return(string_join("strs", "sepstr"));")
     (dotnet ($ strs)
 	    (castclass "class [Newmoon]Newmoon.List")
 	    ($ sepstr)
@@ -671,15 +686,22 @@
 
 (define (error message . args)
   (%assemble (message args) (message args)
-    (c "die(\"unimplemented\");")
+    (c "scheme_error(\"unimplemented\");")
     (dotnet ($ message)
 	    ($ args)
 	    (castclass "class [Newmoon]Newmoon.List")
 	    (call "object class [Newmoon]Newmoon.Primitive::SchemeError(object, class [Newmoon]Newmoon.List)"))))
 
+(%backend c
+	  "#include <sys/types.h>"
+	  "#include <sys/stat.h>"
+	  "#include <errno.h>")
 (define (file-exists? x)
   (%assemble (x) (x)
-    (c "die(\"unimplemented\");")
+    (c "struct stat st;"
+       "if (stat(safe_c_string("x"), &st) == 0) { return(mktrue()); }"
+       "if (errno == ENOENT) { return(mkfalse()); }"
+       "scheme_posix_error(\"file-exists?\", errno);")
     (dotnet ($ x)
 	    (callvirt "instance string [mscorlib]System.Object::ToString()")
 	    (call "bool class [mscorlib]System.IO.File::Exists(string)")
@@ -704,7 +726,7 @@
 
 (define (%%invoke-module s)
   (%assemble (s) (s)
-    (c "die(\"unimplemented\");")
+    (c "die(\"%%invoke-module unimplemented\");")
     (dotnet (ldarg.0)
 	    (ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
 	    (call "instance class [Newmoon]Newmoon.Environment [Newmoon]Newmoon.Module::get_Env()")
@@ -714,7 +736,7 @@
 
 (define (%%get-entry-point m)
   (%assemble (m) (m)
-    (c "die(\"unimplemented\");")
+    (c "die(\"%%get-entry-point unimplemented\");")
     (dotnet ($ m)e
 	    (castclass "class [Newmoon]Newmoon.Module")
 	    (callvirt "instance class [Newmoon]Newmoon.Closure class [Newmoon]Newmoon.Module::GetEntryPoint()"))))
@@ -754,8 +776,30 @@
 	       (,newrest (if (null? ,restvar) ,restvar (cdr ,restvar))))
 	   (let-optionals ,newrest ,(cdr vardefs) ,@body)))))
 
-(defmacro let-optionals* body
-  (error "unimplemented - let-optionals*"))
+(defmacro let-optionals* (restvar vardefs . body)
+  (let ((optional-clause (lambda (vardef)
+			   `(:optional ,restvar ,(cadr vardef)
+				       ,@(map (lambda (pred)
+						`(lambda (,(car vardef)) ,pred))
+					      (cddr vardef))))))
+    (cond
+     ((null? vardefs) `(let () ,@body))
+     ((null? (cdr vardefs))
+      (let ((remaining-vardef (car vardefs)))
+	(cond
+	 ((symbol? remaining-vardef)
+	  `(let ((,remaining-vardef ,restvar)) ,@body))
+	 ((list? (car remaining-vardef))
+	  `(receive ,(car remaining-vardef) (,(cadr remaining-vardef) ,restvar) ,@body))
+	 (else
+	  `(let ((,(car remaining-vardef) ,(optional-clause remaining-vardef)))
+	     ,@body)))))
+     (else
+      (let ((vardef (car vardefs))
+	    (newrest (gensym "letoptstarnewrest")))
+	`(let ((,(car vardef) ,(optional-clause vardef))
+	       (,newrest (if (null? ,restvar) ,restvar (cdr ,restvar))))
+	   (let-optionals* ,newrest ,(cdr vardefs) ,@body)))))))
 
 (define (make-promise thunk)
   (let ((result-ready? #f)

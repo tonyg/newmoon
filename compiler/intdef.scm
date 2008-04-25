@@ -113,4 +113,8 @@
 	       (make-node 'ds-asm
 			  'formals formals
 			  'actuals (map rewrite-internal-definitions actuals)
-			  'code code))))
+			  'code code))
+	      ((backend backend-name arguments)
+	       (make-node 'ds-backend
+			  'backend-name backend-name
+			  'arguments arguments))))

@@ -283,7 +283,8 @@
 	 (literal-table '())
 	 (global-table (make-hash-table))
 	 (all-structures '())
-	 (all-functions '()))
+	 (all-functions '())
+	 (all-literal-c-stanzas '()))
 
     (define (record-structure! structdef)
       (set! all-structures (cons structdef all-structures))
@@ -304,6 +305,9 @@
 	(let ((name (next-literal)))
 	  (set! literal-table (cons (list key name (literalvalue-thunk)) literal-table))
 	  name))))
+
+    (define (record-literal-c-stanza! lines)
+      (set! all-literal-c-stanzas (cons lines all-literal-c-stanzas)))
 
     (define (new-function! name modifiers rettype is-variadic formals)
       (record-function! (make-functiondef name modifiers rettype is-variadic formals)))
@@ -328,7 +332,7 @@
        ((pair? value) (alloctemp fn 'pair `(mkpair ,(car value) ,(cdr value))))
        ((vector? value)
 	(let ((len (vector-length value)))
-	  (let ((vec (alloctemp fn '(* oop) `(mkvec ,len))))
+	  (let ((vec (alloctemp fn 'vector `(mkvec ,len))))
 	    (do ((i 0 (+ i 1)))
 		((= i len))
 	      (add-instr! fn `(vecset ,vec ,i ,(vector-ref value i))))
@@ -497,6 +501,11 @@
 	  (add-instr! fn `(end-literal-c ,tempname))
 	  tempname))
 
+      (define (gen-backend backend-name arguments)
+	(if (eq? backend-name 'c)
+	    (record-literal-c-stanza! arguments))
+	`(mkvoid))
+
       (define (gen-local-set arginfo location expr)
 	(if (arginfo-boxed? arginfo)
 	    `(setbox ,(gen-local-load arginfo location)
@@ -542,6 +551,7 @@
 		    ((cps-lambda cont formals varargs captures globals expr)
 		     (gen-closure-instantiation node (lambda (varname lambdaname) varname)))
 		    ((cps-asm formals actuals code) (gen-asm formals actuals code))
+		    ((cps-backend backend-name arguments) (gen-backend backend-name arguments))
 		    ((cps-local-set name arginfo location expr)
 		     (gen-local-set arginfo location expr))
 		    ((cps-global-set name expr) (gen-global-set name expr))
@@ -560,79 +570,94 @@
       ;; It also has to have no captures.
       (compiler-assert module-entry-point-has-no-captures
 		       (null? (node-get node 'cps-lambda 'captures)))
-      (let* ((entry (new-function! "GetEntryPoint" '() 'oop #f `()))
-	     (ctor-instr (build-closure entry '() node (lambda (varname lambdaname) varname))))
-	(add-instrs! entry `((return (cast_to_oop ,ctor-instr))))))
+      (build-closure 'invalid-parent-fn '() node (lambda (varname lambdaname) varname)))
 
     (define (gen-program-entry-point)
-      (let ((entry (new-function! "NewmoonMain" '() 'oop #f `())))
-	(add-instrs! entry `((return (primcall "GetEntryPoint"))))))
+      (let ((entry (new-function! "main" '() 'int #f `((argc int) (argv (* char))))))
+	(add-instrs! entry `((return (newmoon_main argc argv |InitGlobals| |Startup|))))))
 
     ;;---------------------------------------------------------------------------
     (for-each display (list ";; GCC backend compiling to "assembly-name"\n"))
-    (gen-module-entry-point frontend-result)
+    (let ((first-function (gen-module-entry-point frontend-result)))
 
-    (if (compiler$make-program)
-	(gen-program-entry-point))
+      (if (compiler$make-program)
+	  (gen-program-entry-point))
 
-    (for-each display (list ";; GCC backend generating "output-filename"\n"))
-    (delete-file-if-exists output-filename)
-    (call-with-output-file output-filename
-      (lambda (o)
-	(c-file-prologue o (mangle-id assembly-name))
-	(hash-table-for-each global-table
-			     (lambda (globalname dummy)
-			       (emit o "defglobal("(mangle-id globalname)");\n")))
-	(emit o "\n")
-	(let ((global-initialiser (new-function! "InitGlobals" '() 'void #f `())))
+      (for-each display (list ";; GCC backend generating "output-filename"\n"))
+      (delete-file-if-exists output-filename)
+      (call-with-output-file output-filename
+	(lambda (o)
+	  (c-file-prologue o (mangle-id assembly-name))
+	  (for-each (lambda (lines)
+		      (for-each (lambda (line) (emit o line"\n")) lines))
+		    (reverse all-literal-c-stanzas))
+	  (emit o "\n")
 	  (hash-table-for-each global-table
 			       (lambda (globalname dummy)
-				 (add-instr! global-initialiser
-					     `(initglobal ,(mangle-id globalname)
-							  ,(escape-string
-							    (symbol->string globalname)))))))
-	(for-each (lambda (entry)
-		    (let ((literalname (cadr entry)))
-		      (emit o "defliteral("literalname");\n")))
-		  literal-table)
-	(emit o "\n")
-	(let ((literal-initialiser (new-function! "InitLiterals" `(,*noreturn*) 'void #f
-						  `((k continuation)))))
+				 (emit o "defglobal("(mangle-id globalname)");\n")))
+	  (emit o "\n")
+	  (let ((global-initialiser (new-function! "InitGlobals" '() 'void #f `())))
+	    (hash-table-for-each global-table
+				 (lambda (globalname dummy)
+				   (add-instr! global-initialiser
+					       `(initglobal ,(mangle-id globalname)
+							    ,(escape-string
+							      (symbol->string globalname)))))))
 	  (for-each (lambda (entry)
-		      (let ((literalname (cadr entry))
-			    (literalvalue (caddr entry)))
-			(add-instr! literal-initialiser
-				    `(settemp ,literalname
-					      ,(gen-literal-initialiser literal-initialiser
-									literalvalue)))))
-		    (reverse literal-table))
-	  (add-instr! literal-initialiser `(callfun k 1 (mknull))))
-	(for-each (emit-structdef o) all-structures)
-	(for-each (emit-functionproto o) all-functions)
-	(emit o "\n")
-	(for-each (emit-functiondef o) all-functions)
-	))
+		      (let ((literalname (cadr entry)))
+			(emit o "defliteral("literalname");\n")))
+		    literal-table)
+	  (emit o "\n")
+	  (let ((literal-initialiser (new-function! "Startup" `() 'void #f
+						    `((k continuation)))))
+	    (for-each (lambda (entry)
+			(let ((literalname (cadr entry))
+			      (literalvalue (caddr entry)))
+			  (add-instr! literal-initialiser
+				      `(settemp ,literalname
+						,(gen-literal-initialiser literal-initialiser
+									  literalvalue)))))
+		      (reverse literal-table))
+	    (add-instr! literal-initialiser `(callfun ,first-function 1 k)))
+	  (for-each (emit-structdef o) all-structures)
+	  (for-each (emit-functionproto o) all-functions)
+	  (emit o "\n")
+	  (for-each (emit-functiondef o) all-functions)
+	  ))
 
-    (for-each display (list ";; GCC backend compiling "output-filename
-			    (if (compiler$make-program)
-				" to executable\n"
-				" to library\n")))
-    (if (not (call-external-program (or (getenv "NEWMOON_GCC")
- 					(find-executable-path "gcc")
- 					(error (string-append
- 						"The environment variable NEWMOON_GCC"
- 						" is not set, and 'gcc' was not found"
- 						" on the $PATH.")))
-				    "-O3"
-				    "-fomit-frame-pointer"
-				    "-foptimize-sibling-calls"
-				    "-fno-pic"
-				    (string-append "-I"
-						   (path->string (current-load-relative-directory))
-						   "/backend/c")
-				    "-S"
-				    "-o" (replace-filename-extension output-filename ".s")
- 				    ;;(if (compiler$make-program) "/exe" "/dll")
- 				    output-filename))
- 	(error "Call to external compiler failed - is $NEWMOON_GCC correct?"))
-    ))
+      (for-each display (list ";; GCC backend compiling "output-filename
+			      (if (compiler$make-program)
+				  " to executable\n"
+				  " to library\n")))
+
+      (let ((backend-path (string-append (path->string (current-load-relative-directory))
+					 "/backend/c")))
+	(if (not (call-external-program (or (getenv "NEWMOON_GCC")
+					    (find-executable-path "glibtool")
+					    (find-executable-path "libtool")
+					    (error (string-append
+						    "The environment variable NEWMOON_GCC"
+						    " is not set, and neither 'glibtool'"
+						    " nor 'libtool' was found on the $PATH.")))
+					"--mode=link"
+					"gcc"
+					"-g"
+					"-O3"
+					"-fomit-frame-pointer"
+					"-foptimize-sibling-calls"
+					"-fno-pic"
+					(string-append "-I"backend-path)
+					(string-append "-L"backend-path)
+					(if (compiler$make-program)
+					    ""
+					    "-c")
+					"-o" (if (compiler$make-program)
+						 (replace-filename-extension output-filename "")
+						 (replace-filename-extension output-filename ".so"))
+					output-filename
+					(if (compiler$make-program)
+					    "-lnewmoon"
+					    "")
+					))
+	    (error "Call to external compiler failed - is $NEWMOON_GCC correct?"))
+	))))

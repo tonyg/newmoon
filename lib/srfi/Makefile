@@ -1,3 +1,3 @@
-TARGETS=1.dll 9.dll 14.dll 13.dll
+TARGETS=1.$(SCMOEXT) 9.$(SCMOEXT) 14.$(SCMOEXT) 13.$(SCMOEXT)
 
 include ../../Makefile.global

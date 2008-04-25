@@ -6,6 +6,7 @@
 
 (define (record? x)
   (%assemble (x t f) (x #t #f)
+    (c "return(scheme_boolean(isrecord("x")));")
     (dotnet ($ x)
 	    (isinst "class [Newmoon]Newmoon.Record")
 	    (brtrue ldtrue)
@@ -17,6 +18,8 @@
 
 (define (make-record size)
   (%assemble (size) (size)
+    (c "if (!isint("size")) { wrong_type(0); }"
+       "return(mkrec(DETAG("size")));")
     (dotnet ($ size)
 	    (unbox "int32")
 	    (ldind.i4)
@@ -24,6 +27,11 @@
 
 (define (record-ref record index)
   (%assemble (record index) (record index)
+    (c "int ival = DETAG("index");"
+       "if (!isrecord("record")) { wrong_type(0); }"
+       "if (!isint("index")) { wrong_type(1); }"
+       "if (ival < 0 || ival >= oop_len("record")) { bad_index(); }"
+       "return(((vector *) "record")->data[ival]);")
     (dotnet ($ record)
 	    (castclass "class [Newmoon]Newmoon.Record")
 	    ($ index)
@@ -33,6 +41,11 @@
 
 (define (record-set! record index value)
   (%assemble (record index value) (record index value)
+    (c "int ival = DETAG("index");"
+       "if (!isrecord("record")) { wrong_type(0); }"
+       "if (!isint("index")) { wrong_type(1); }"
+       "if (ival < 0 || ival >= oop_len("record")) { bad_index(); }"
+       "return(((vector *) "record")->data[ival] = "value");")
     (dotnet ($ record)
 	    (castclass "class [Newmoon]Newmoon.Record")
 	    ($ index)

@@ -1,5 +1,8 @@
 # -*- Makefile -*-
 
+BACKEND=c
+SCMOEXT=so
+
 all:: _presubdirs _all _postsubdirs
 
 _presubdirs::
@@ -44,6 +47,22 @@ endif
 %.dll: %.scm
 ifdef DEV_TREE
 	$(DEV_TREE)/compiler/newmoon-mz -X $<
+else
+	@echo 'Variable $$DEV_TREE not set.'
+	false
+endif
+
+%.so: %.scm
+ifdef DEV_TREE
+	$(DEV_TREE)/compiler/newmoon-mz -X $<
+else
+	@echo 'Variable $$DEV_TREE not set.'
+	false
+endif
+
+%: %.scm
+ifdef DEV_TREE
+	$(DEV_TREE)/compiler/newmoon-mz -x $<
 else
 	@echo 'Variable $$DEV_TREE not set.'
 	false

@@ -1,6 +1,6 @@
 (define (head-exprs expr)
   (node-collect-subnodes expr (case (node-kind expr)
-				((ds-lit ds-void ds-var ds-lambda) '())
+				((ds-lit ds-void ds-var ds-lambda ds-backend) '())
 				((ds-apply) '(rator . rands))
 				((ds-begin) '(head))
 				((ds-if) '(test))
@@ -12,7 +12,8 @@
 
 (define (tail-exprs expr)
   (node-collect-subnodes expr (case (node-kind expr)
-				((ds-lit ds-void ds-var ds-lambda ds-apply ds-set ds-asm) '())
+				((ds-lit ds-void ds-var ds-lambda ds-apply ds-set
+					 ds-asm ds-backend) '())
 				((ds-begin) '(tail))
 				((ds-if) '(true false))
 				(else (error "internal-compiler-error"
@@ -125,6 +126,11 @@
 			      'formals formals
 			      'actuals (map cps-transform actuals)
 			      'code code))
+		  ((ds-backend backend-name arguments)
+		   (compiler-assert backend-is-always-its-own-head-expr (eq? ie node))
+		   (make-node 'cps-backend
+			      'backend-name backend-name
+			      'arguments arguments))
 		  (else
 		   (error "internal-compiler-error"
 			  "invalid initial-expression node-kind; node =" node)))))))
@@ -163,4 +169,8 @@
 	       (make-node 'cps-asm
 			  'formals formals
 			  'actuals (map cps-transform actuals)
-			  'code code))))
+			  'code code))
+	      ((ds-backend backend-name arguments)
+	       (make-node 'cps-backend
+			  'backend-name backend-name
+			  'arguments arguments))))
