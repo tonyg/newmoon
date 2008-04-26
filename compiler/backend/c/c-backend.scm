@@ -631,7 +631,8 @@
 				  " to library\n")))
 
       (let ((backend-path (string-append (path->string (current-load-relative-directory))
-					 "/backend/c")))
+					 "/backend/c"))
+	    (dummy-arg "-DNEWMOON_DUMMY_DEFINITION_BECAUSE_GCC_HATES_BLANK_SPACES"))
 	(if (not (call-external-program (or (getenv "NEWMOON_GCC")
 					    (find-executable-path "glibtool")
 					    (find-executable-path "libtool")
@@ -649,7 +650,7 @@
 					(string-append "-I"backend-path)
 					(string-append "-L"backend-path)
 					(if (compiler$make-program)
-					    ""
+					    dummy-arg
 					    "-c")
 					"-o" (if (compiler$make-program)
 						 (replace-filename-extension output-filename "")
@@ -657,7 +658,7 @@
 					output-filename
 					(if (compiler$make-program)
 					    "-lnewmoon"
-					    "")
+					    dummy-arg)
 					))
 	    (error "Call to external compiler failed - is $NEWMOON_GCC correct?"))
 	))))
