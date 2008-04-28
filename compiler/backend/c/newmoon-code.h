@@ -96,7 +96,8 @@ typedef enum {
   init_object_header(box__ ## var.header, TYPE_BOX, 1);	\
   box__ ## var.value = var;				\
   var = (oop) &box__ ## var;
-#define setbox(var, val) (((box *) var)->value = (val))
+#define setbox(var, val) (((box *) (var))->value = (val))
+#define getbox(var) (((box *) (var))->value)
 #define settemp(var, val) var = val
 #define conditional(test, t, f)			\
   if (test) { goto conditional__ ## t; }	\

@@ -458,7 +458,9 @@
 						      ,instr))))
 
       (define (gen-local-get arginfo location)
-	(gen-local-load arginfo location))
+	(if (arginfo-boxed? arginfo)
+	    `(getbox ,(gen-local-load arginfo location))
+	    (gen-local-load arginfo location)))
 
       (define (gen-global-get name)
 	`(globalget ,(mangle-id (record-global! name))))
