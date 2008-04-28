@@ -132,7 +132,6 @@ typedef enum {
       memcpy(&(_tmp->data[0]), initbytes, len);		  \
       _tmp;						  \
     });
-/* FIXME: %%% correct initialisation for pairs below */
 #define extractvarargs(varname, mandatoryargc, lastrealarg)	\
   {								\
     va_list the_va_list;					\
@@ -144,6 +143,7 @@ typedef enum {
       {								\
 	pair *p = alloca(sizeof(pair));				\
 	oop a = va_arg(the_va_list, oop);			\
+	p->header.gc_info = MAKE_GC_INFO(TYPE_PAIR, 2, 1);	\
 	p->car = a;						\
 	p->cdr = varname;					\
 	varname = p;						\
