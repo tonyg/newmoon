@@ -15,6 +15,10 @@ box *lookup_global(char const *name) {
   return NULL;
 }
 
+extern oop intern(char const *str) {
+  return NULL;
+}
+
 int newmoon_main(int argc,
 		 char const *argv,
 		 void (*initGlobals)(void),

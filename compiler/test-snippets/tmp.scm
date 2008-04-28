@@ -1,7 +1,11 @@
+(%backend c
+	  "#include <stdio.h>")
+
 (define (x y)
   (define (v val) (w val))
   (define (w val)
     (%assemble (x) (val)
+      (c "printf(\"display: %p\\n\", "x");")
       (scheme (display x))
       (dotnet ("// w assembly start")
 	      ($ x)
