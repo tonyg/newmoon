@@ -19,6 +19,9 @@ extern oop intern(char const *str) {
   return NULL;
 }
 
+void registerroots(int root_count, ...) {
+}
+
 int newmoon_main(int argc,
 		 char const *argv,
 		 void (*initGlobals)(void),

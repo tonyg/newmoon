@@ -598,13 +598,21 @@
 			       (lambda (globalname dummy)
 				 (emit o "defglobal("(mangle-id globalname)");\n")))
 	  (emit o "\n")
-	  (let ((global-initialiser (new-function! "InitGlobals" '() 'void #f `())))
-	    (hash-table-for-each global-table
-				 (lambda (globalname dummy)
-				   (add-instr! global-initialiser
-					       `(initglobal ,(mangle-id globalname)
-							    ,(escape-string
-							      (symbol->string globalname)))))))
+	  (let* ((global-initialiser (new-function! "InitGlobals" '() 'void #f `()))
+		 (mangled-global-ids
+		  (hash-table-map global-table
+				  (lambda (globalname dummy)
+				    (let ((mid (mangle-id globalname)))
+				      (add-instr! global-initialiser
+						  `(initglobal ,mid
+							       ,(escape-string
+								 (symbol->string globalname))))
+				      mid)))))
+	    (add-instr! global-initialiser
+			`(registerroots ,(length mangled-global-ids)
+					,@(map (lambda (mid)
+						 `(globalbox ,mid))
+					       mangled-global-ids))))
 	  (for-each (lambda (entry)
 		      (let ((literalname (cadr entry)))
 			(emit o "defliteral("literalname");\n")))

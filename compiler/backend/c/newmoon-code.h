@@ -79,6 +79,7 @@ typedef enum {
 
 #define defglobal(n) static box *global__ ## n = NULL
 #define defliteral(n) static oop n = NULL
+#define globalbox(n) (global__ ## n)
 #define globalget(n) (global__ ## n->value)
 #define globalset(n,v) (global__ ## n->value = (v))
 #define callfun(f, arity, ...) (((closure *) (f))->code(f, arity, __VA_ARGS__))
@@ -188,3 +189,4 @@ extern int newmoon_main(int argc,
 			char const *argv,
 			void (*initGlobals)(void),
 			void (*startup)(continuation));
+extern void registerroots(int root_count, ...);
