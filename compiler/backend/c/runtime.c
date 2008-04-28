@@ -15,7 +15,7 @@ box *lookup_global(char const *name) {
   return NULL;
 }
 
-extern oop intern(char const *str) {
+oop intern(char const *str) {
   return NULL;
 }
 
