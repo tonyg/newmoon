@@ -190,3 +190,31 @@ extern int newmoon_main(int argc,
 			void (*initGlobals)(void),
 			void (*startup)(continuation));
 extern void registerroots(int root_count, ...);
+
+/*
+  Calling convention:
+
+  If varargs:
+      If argc >= expected argc, collect rest list from va_list and run as per normal.
+      If argc == -1, return pointer for apply hook.
+      Otherwise, complain atleast_argc().
+  If not varargs:
+      If argc == expected argc, run as per normal.
+      If argc == -1, return pointer for apply hook.
+      Otherwise, complain exactly_argc().
+
+  The apply hook is a function of signature
+
+  void __attribute__((noreturn)) (*newmoon_apply_hook)(void *, oop restlist);
+
+  which reads values out of the restlist, supplying them as real
+  parameters to the non-apply-hook version of the function.
+
+  For varargs functions, there will be three forms of the function:
+   - a normal entry-point, which has "..." on the end of the formals
+   - an apply-hook, which converts a restlist to the third form
+   - an internal function, which has an oop restlist as the final formal
+
+  For normal functions, there will be just the two, and the apply hook
+  will delegate to the normal form of the function.
+*/
