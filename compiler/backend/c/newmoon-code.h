@@ -82,7 +82,10 @@ typedef enum {
 #define globalbox(n) (global__ ## n)
 #define globalget(n) (global__ ## n->value)
 #define globalset(n,v) (global__ ## n->value = (v))
-#define callfun(f, arity, ...) (((closure *) (f))->code(f, arity, __VA_ARGS__))
+#define stackcheckdispatch(f) ({ oop top_; (&top_ < gc_limit) ? gc_stack_collector : (f);})
+#define checkedcallfun(f, arity, ...) \
+             (stackcheckdispatch(((closure *) (f))->code)(f, arity, __VA_ARGS__))
+#define callfun(f, arity, ...) ((((closure *) (f))->code)(f, arity, __VA_ARGS__))
 #define directcall(fn, fv, arity, ...) fn(fv, arity, __VA_ARGS__)
 #define envref(e, member) ((e)->member)
 #define allocenv(env_ty, length, codeptr, varname)	\
@@ -190,6 +193,9 @@ extern int newmoon_main(int argc,
 			void (*initGlobals)(void),
 			void (*startup)(continuation));
 extern void registerroots(int root_count, ...);
+
+extern oop *gc_limit;
+extern void __attribute__((noreturn)) gc_stack_collector(void *, ...);
 
 /*
   Calling convention:

@@ -526,9 +526,10 @@
 							,varname
 							,arity
 							,@(map gen rands))))
-	      `(callfun ,(gen rator)
-			,arity
-			,@(map gen rands)))))
+	      `(,(if cont 'callfun 'checkedcallfun)
+		,(gen rator)
+		,arity
+		,@(map gen rands)))))
 
       (define (gen-begin head tail)
 	(add-instr! fn (gen head))
