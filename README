@@ -1,22 +1,8 @@
 This is Newmoon, a very very simple CPS compiler for a language
 asymptotically approaching R5RS Scheme. The compiler currently targets
-just the one backend: Microsoft's CLR ("dotnet"). Previously an ad-hoc
-bytecode machine was targeted; the layering is clean enough that
-retargeting ought to be minimally painful.
-
-In order to run this software, you currently require:
- - MzScheme 20x
- - A recent "srfi" (and optionally "schemeunit") collection for MzScheme
- - A .NET platform
-	- MS .NET
-	- Mono .NET
-	- DotGNU Portable .NET
- - Cygwin, if you're running on Windows
-
-If you're not using Mono, set the environment variable CSC to point to
-your C# compiler, and CLR to point to your CLR runtime .exe loader. If
-you're using Portable.NET, you might get StackOverflowException unless
-you set, say, CLR="ilrun -S1024" or greater.
+the JVM, Microsoft's CLR ("dotnet") and a custom C runtime. Previously
+an ad-hoc bytecode machine was targeted; the layering is clean enough
+that retargeting ought to be minimally painful.
 
 This is all the documentation you will find at the moment. More will
 be forthcoming.
@@ -28,7 +14,7 @@ in the file COPYING in this directory.
 The relevant copyright notice for the files in this archive follows:
 
     Newmoon - a simple .NET Scheme compiler
-    Copyright (C) 1999-2005 Tony Garnock-Jones <tonyg@kcbbs.gen.nz>
+    Copyright (C) 1999-2010 Tony Garnock-Jones <tonyg@kcbbs.gen.nz>
     Copyright (C) 2005 LShift Ltd. <query@lshift.net>
     Copyright (C) 2003 Tom Berger <t.berger@ucl.ac.uk>
 
