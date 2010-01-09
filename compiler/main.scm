@@ -4,12 +4,12 @@
   (gensym "GENSYM"))
 
 (defmacro compiler-assert (excp-sym test-expr . more)
-  `(if (not ,test-expr)
-       (error "internal-compiler-error" "assertion failed:" ',excp-sym ',test-expr ,@more)))
+  `(when (not ,test-expr)
+     (error "internal-compiler-error" "assertion failed:" ',excp-sym ',test-expr ,@more)))
 
 (defmacro syntax-assert (excp-sym test-expr)
-  `(if (not ,test-expr)
-       (error "syntax-error" "this rule failed:" ',excp-sym ',test-expr)))
+  `(when (not ,test-expr)
+     (error "syntax-error" "this rule failed:" ',excp-sym ',test-expr)))
 
 ;;; Load compiler modules
 
@@ -58,11 +58,10 @@
     (lambda (filename)
       (display ";; compile-file compiling ") (display filename) (newline)
       (let ((exprs (call-with-input-file filename read-all-sexps)))
-	(if (not basic-visited)
-	    (if (not (compiler$without-basic-libraries))
-		(begin
-		  (visit (resolve-library-path "basic-library.scm" '()))
-		  (set! basic-visited #t))))
+	(when (not basic-visited)
+	  (when (not (compiler$without-basic-libraries))
+	    (visit (resolve-library-path "basic-library.scm" '()))
+	    (set! basic-visited #t)))
 	(parameterize ((compiler$visit-time '()))
 	  (compiler-back-end-phases filename
 				    (compiler-front-end-phases `(begin ,@exprs)))

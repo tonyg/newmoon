@@ -2,15 +2,17 @@
 ;; the "annotate" phase (a lambda term, in the cps2-value language).
 
 (define (core-scheme-eval sexp)
-  (if (debug-mode=? 'coreeval) (pretty-print `(core-scheme-eval ',(if (node? sexp)
-								      (vector "NODE"
-									      (node->list sexp))
-								      sexp))))
+  (when (debug-mode=? 'coreeval)
+    (pretty-print `(core-scheme-eval ',(if (node? sexp)
+					   (vector "NODE"
+						   (node->list sexp))
+					   sexp))))
   (let* ((cps2 (compiler-front-end-phases sexp))
 	 (thunk (cps2->closure cps2))
 	 (outer-k (lambda (dummy-magic dummy-k v) v))
 	 (result ((thunk outer-k '#() '#()))))
-    (if (debug-mode=? 'coreeval) (pretty-print `("core-scheme-eval-result" ,result)))
+    (when (debug-mode=? 'coreeval)
+      (pretty-print `("core-scheme-eval-result" ,result)))
     result))
 
 (define-record-type core-scheme-cell
@@ -26,7 +28,7 @@
 (define *globals* (make-hash-table))
 
 (defmacro debug-pretty-print (exp)
-  `(begin (if (debug-mode=? 'coreeval-pp) (pretty-print ,exp)) 'debug-pretty-print-result)
+  `(begin (when (debug-mode=? 'coreeval-pp) (pretty-print ,exp)) 'debug-pretty-print-result)
   ;;`(begin 'debug-pretty-print-result)
   )
 

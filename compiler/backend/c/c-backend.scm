@@ -114,7 +114,7 @@
     (if (null? items)
 	(emit port cparen)
 	(begin
-	  (if need-sep (emit port sep))
+	  (when need-sep (emit port sep))
 	  (emitter (car items))
 	  (loop (cdr items) #t)))))
 
@@ -399,21 +399,21 @@
 					   '()
 					   `((k continuation)))
 				     ,@(formals->argdefs formals)))))
-	  (if varargs
-	      (let ((rest-arginfo (car (filter (lambda (f) (node-get f 'arginfo 'is-rest))
-					       formals)))
-		    (penultimate-vardef (last (node-get code 'functiondef 'formals))))
-		(add-instrs! code `((deftemp ,(arginfo->id rest-arginfo) (mknull))
-				    (extractvarargs ,(arginfo->id rest-arginfo)
-						    ,arity
-						    ,(node-get penultimate-vardef
-							       'vardef 'name))))))
+	  (when varargs
+	    (let ((rest-arginfo (car (filter (lambda (f) (node-get f 'arginfo 'is-rest))
+					     formals)))
+		  (penultimate-vardef (last (node-get code 'functiondef 'formals))))
+	      (add-instrs! code `((deftemp ,(arginfo->id rest-arginfo) (mknull))
+				  (extractvarargs ,(arginfo->id rest-arginfo)
+						  ,arity
+						  ,(node-get penultimate-vardef
+							     'vardef 'name))))))
 	  (for-each (lambda (arginfo)
-		      (if (arginfo-boxed? arginfo)
-			  (begin
-			    (compiler-assert continuation-arginfo-never-boxed
-					     (not (node-get arginfo 'arginfo 'cont)))
-			    (add-instr! code `(installbox ,(arginfo->id arginfo))))))
+		      (when (arginfo-boxed? arginfo)
+			(begin
+			  (compiler-assert continuation-arginfo-never-boxed
+					   (not (node-get arginfo 'arginfo 'cont)))
+			  (add-instr! code `(installbox ,(arginfo->id arginfo))))))
 		    formals)
 	  (add-instr! code (gen-node code capture-map expr)))
 
@@ -504,8 +504,8 @@
 	  tempname))
 
       (define (gen-backend backend-name arguments)
-	(if (eq? backend-name 'c)
-	    (record-literal-c-stanza! arguments))
+	(when (eq? backend-name 'c)
+	  (record-literal-c-stanza! arguments))
 	`(mkvoid))
 
       (define (gen-local-set arginfo location expr)
@@ -583,8 +583,8 @@
     (for-each display (list ";; GCC backend compiling to "assembly-name"\n"))
     (let ((first-function (gen-module-entry-point frontend-result)))
 
-      (if (compiler$make-program)
-	  (gen-program-entry-point))
+      (when (compiler$make-program)
+	(gen-program-entry-point))
 
       (for-each display (list ";; GCC backend generating "output-filename"\n"))
       (delete-file-if-exists output-filename)
@@ -644,7 +644,8 @@
       (let ((backend-path (string-append (path->string (current-load-relative-directory))
 					 "/backend/c"))
 	    (dummy-arg "-DNEWMOON_DUMMY_DEFINITION_BECAUSE_GCC_HATES_BLANK_SPACES"))
-	(if (not (call-external-program (or (getenv "NEWMOON_GCC")
+	(when
+	    (not (call-external-program (or (getenv "NEWMOON_GCC")
 					    (find-executable-path "glibtool")
 					    (find-executable-path "libtool")
 					    (error (string-append
@@ -671,5 +672,5 @@
 					    "-lnewmoon"
 					    dummy-arg)
 					))
-	    (error "Call to external compiler failed - is $NEWMOON_GCC correct?"))
+	  (error "Call to external compiler failed - is $NEWMOON_GCC correct?"))
 	))))

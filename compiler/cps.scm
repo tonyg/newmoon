@@ -53,12 +53,11 @@
 	  (loop-subs (cdr subs)))
 	 (else
 	  (let loop-tail ((tail (node-get expr (node-kind expr) subs)))
-	    (if (pair? tail)
-		(begin
-		  (if (eq? (car tail) what)
-		      (set-car! tail with)
-		      (loop-expr (car tail)))
-		  (loop-tail (cdr tail)))))))))
+	    (when (pair? tail)
+	      (if (eq? (car tail) what)
+		  (set-car! tail with)
+		  (loop-expr (car tail)))
+	      (loop-tail (cdr tail))))))))
     expr)))
 
 (define (make-lambda-cont outer-cont-sym inner-cont-sym node ie)

@@ -36,10 +36,10 @@
             (let ((x (read p)))
               (if (eof-object? x)
                   (begin (close-input-port p) '())
-                  (cons (datum->syntax-object k x) (f))))))))
+                  (cons (datum->syntax k x) (f))))))))
     (syntax-case x ()
       ((k filename)
-       (let ((fn (syntax-object->datum (syntax filename))))
+       (let ((fn (syntax->datum (syntax filename))))
          (with-syntax (((exp ...) (read-file fn (syntax k))))
            (syntax (begin exp ...))))))))
 

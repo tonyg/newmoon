@@ -68,9 +68,9 @@
 				 (lambda ()
 				   ;; It's a global variable. Insert an entry here only
 				   ;; if we need to.
-				   (if require-global-entry?
-				       (node-set! lambda-node 'cps-lambda 'globals
-						  (cons varname old-globals)))
+				   (when require-global-entry?
+				     (node-set! lambda-node 'cps-lambda 'globals
+						(cons varname old-globals)))
 				   (global-k))
 				 (lambda (arginfo old-location)
 				   ;; It's a captured variable. Recapture it here.

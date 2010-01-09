@@ -148,8 +148,8 @@
 		((lookup-macro (car expr))
 		 ;; This symbol is bound to a macro!
 		 => (lambda (kind/transformer)
-		      (if (debug-mode=? 'expansion)
-			  (pretty-print `(expanding ',expr)))
+		      (when (debug-mode=? 'expansion)
+			(pretty-print `(expanding ',expr)))
 		      (let ((kind (car kind/transformer))
 			    (transformer (cdr kind/transformer)))
 			(if (eq? kind 'form)
