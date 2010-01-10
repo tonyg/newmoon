@@ -1,18 +1,20 @@
 ; MzScheme support code.
+(require mzscheme)
+(require scheme/base)
 
 (define (newmoon-basis) 'mzscheme)
 
 (read-case-sensitive #t)
 (print-struct #t)
 
-(require-for-syntax (lib "1.ss" "srfi"))
-(require (lib "1.ss" "srfi")
-	 (lib "13.ss" "srfi")
-	 (lib "9.ss" "srfi")
-	 (lib "pretty.ss")
-	 (lib "defmacro.ss")
-	 (lib "process.ss")
-	 (lib "etc.ss"))
+(require-for-syntax srfi/1)
+(require srfi/1)
+(require srfi/13)
+(require srfi/9)
+(require scheme/pretty)
+(require mzlib/defmacro)
+(require mzlib/process)
+(require mzlib/etc)
 
 (define (complete-path p)
   (let ((reldir (current-load-relative-directory)))

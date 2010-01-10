@@ -1,4 +1,4 @@
-"true" "-*- scheme -*-";exec env mzscheme -mv -f "$0" -e "(apply newmoon-main \"`dirname $0`\" (vector->list argv))" -- "$@"
+"true" "-*- scheme -*-";exec env mzscheme -f "$0" -e "(apply newmoon-main \"`dirname $0`\" (vector->list (current-command-line-arguments)))" -- "$@"
 
 (define (newmoon-main raw-script-directory . args)
   (define interactive #f)
