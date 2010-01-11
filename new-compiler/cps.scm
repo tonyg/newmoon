@@ -39,14 +39,52 @@
 		    (else (k node))))
 		 expr)))
 
-(define (make-lambda-cont outer-cont-sym inner-cont-sym node ie)
+(define (expr-references* node mode)
+  ;; Icky: treats %cps-value and %cps-exp together
+  (let walk ((node node))
+    (node-match node
+      ((@cps-apply rator rands) (apply lset-union eq? (walk rator) (map walk rands)))
+      ((@cps-exp-begin head tail) (lset-union eq? (walk head) (walk tail)))
+      ((@cps-exp-if test true false) (lset-union eq? (walk test) (walk true) (walk false)))
+
+      ((@cps-lit) '())
+      ((@cps-void) '())
+      ((@cps-var name) (case mode
+			 ((child-captures) '())
+			 ((updates) '())
+			 ((references) (list name))))
+      ((@cps-lambda formals expr expr-references expr-updates)
+       (lset-difference eq?
+			(case mode
+			  ((child-captures) expr-references)
+			  ((updates) expr-updates)
+			  ((references) expr-references))
+			(map @arginfo-name formals)))
+      ((@cps-asm actuals) (apply lset-union eq? (map walk actuals)))
+      ((@cps-backend) '())
+      ((@cps-set name expr) (case mode
+			      ((child-captures) '())
+			      ((updates) (lset-adjoin eq? (walk expr) name))
+			      ((references) (lset-adjoin eq? (walk expr) name))))
+      ((@cps-value-begin head tail) (lset-union eq? (walk head) (walk tail)))
+      ((@cps-value-if test true false) (lset-union eq? (walk test) (walk true) (walk false))))))
+
+(define (make-cps-lambda cont formals varargs cps-expr)
   (make-node @cps-lambda
-	     #f
-	     (list (make-arginfo #f inner-cont-sym))
-	     #f
-	     (cps-pushing-transform outer-cont-sym
-				    (subst-expr node ie
-						(make-node @ds-var inner-cont-sym)))))
+	     cont
+	     formals
+	     varargs
+	     cps-expr
+	     (expr-references* cps-expr 'references)
+	     (expr-references* cps-expr 'updates)))
+
+(define (make-lambda-cont outer-cont-sym inner-cont-sym node ie)
+  (make-cps-lambda #f 
+		   (list (make-arginfo #f inner-cont-sym))
+		   #f
+		   (cps-pushing-transform outer-cont-sym
+					  (subst-expr node ie
+						      (make-node @ds-var inner-cont-sym)))))
 
 (define (gen-cont-sym) (gensym "CONT"))
 (define (gen-val-sym) (gensym "VAL"))
@@ -89,11 +127,10 @@
 		     (the-cont-arg (gen-val-sym)))
 		 (make-node @cps-apply
 			    #t
-			    (make-node @cps-lambda
-				       #f
-				       (list (make-arginfo #f the-cont-var))
-				       #f
-				       (make-cps-if the-cont-var))
+			    (make-cps-lambda #f
+					     (list (make-arginfo #f the-cont-var))
+					     #f
+					     (make-cps-if the-cont-var))
 			    (list (make-lambda-cont cont-arg the-cont-arg node ie)))))))
 	((@ds-asm formals actuals code)
 	 (compiler-assert assembly-is-always-its-own-head-expr (eq? ie node))
@@ -129,11 +166,10 @@
     ((@ds-var name) (make-node @cps-var name))
     ((@ds-lambda formals varargs expr)
      (let ((cont-arg (gen-cont-sym)))
-       (make-node @cps-lambda
-		  (make-arginfo #t cont-arg)
-		  formals
-		  varargs
-		  (cps-pushing-transform cont-arg expr))))
+       (make-cps-lambda (make-arginfo #t cont-arg)
+			formals
+			varargs
+			(cps-pushing-transform cont-arg expr))))
     ((@ds-apply rator rands)
      (make-node @cps-apply
 		#f

@@ -13,34 +13,6 @@
 ;  - define location mappings for captures
 ;  - compute the set of global names referenced or set
 
-(define (variables-referenced* node include-gets include-sets lambda-expr-handler)
-  ;; Icky: treats %cps-value and %cps-exp together
-  (let walk ((node node))
-    (node-match node
-      ((@cps-apply rator rands) (apply lset-union eq? (walk rator) (map walk rands)))
-      ((@cps-exp-begin head tail) (lset-union eq? (walk head) (walk tail)))
-      ((@cps-exp-if test true false) (lset-union eq? (walk test) (walk true) (walk false)))
-
-      ((@cps-lit) '())
-      ((@cps-void) '())
-      ((@cps-var name) (if include-gets (list name) '()))
-      ((@cps-lambda formals expr) (lset-difference eq?
-						   (lambda-expr-handler expr)
-						   (map @arginfo-name formals)))
-      ((@cps-asm actuals) (apply lset-union eq? (map walk actuals)))
-      ((@cps-backend) '())
-      ((@cps-set name expr) (if include-sets
-				(lset-adjoin eq? (walk expr) name)
-				(walk expr)))
-      ((@cps-value-begin head tail) (lset-union eq? (walk head) (walk tail)))
-      ((@cps-value-if test true false) (lset-union eq? (walk test) (walk true) (walk false))))))
-
-(define (variables-referenced node g s)
-  (variables-referenced* node g s (lambda (expr) (variables-referenced expr g s))))
-
-(define (variables-captured node)
-  (variables-referenced* node #f #f (lambda (expr) (variables-referenced expr #t #t))))
-
 (define-record-type rib
   (make-rib* lambda-node scope capture-mapping global-set)
   rib?
@@ -51,8 +23,8 @@
 
 (define (make-rib lambda-node)
   (make-rib* lambda-node
-	     (let ((names-set (variables-referenced (@cps-lambda-expr lambda-node) #f #t))
-		   (names-cap (variables-captured (@cps-lambda-expr lambda-node)))
+	     (let ((names-set (@cps-lambda-expr-updates lambda-node))
+		   (names-cap (expr-references* (@cps-lambda-expr lambda-node) 'child-captures))
 		   (all-formals (let ((c (@cps-lambda-cont lambda-node)))
 				  (if c
 				      (cons c (@cps-lambda-formals lambda-node))
