@@ -9,7 +9,7 @@
     (define (definer name kind value)
       (%assemble (name kind value result) (name kind value 'dummy)
 	(c "defineGlobal("name", "kind", "value");")
-	(scheme (%define-global-variable name value))
+	(scheme ($define-global-variable name value))
 	(dotnet (ldarg.0)
 		(ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
 		($ name)
@@ -19,10 +19,10 @@
 		(call "void class [Newmoon]Newmoon.Environment::InstallBinding(class [Newmoon]Newmoon.Module, object, string, object)")
 		($ result))))
     (definer 'sys$install-binding 'global definer)))
- (sys$install-binding '%define-global-variable 'global
+ (sys$install-binding '$define-global-variable 'global
 		      (lambda (name value)
 			(sys$install-binding name 'global value)))
- (sys$install-binding '%define-macro-transformer 'global
+ (sys$install-binding '$define-macro-transformer 'global
 		      (lambda (name kind transformer)
 			(sys$install-binding name 'macro (cons kind transformer)))))
 
@@ -312,11 +312,19 @@
 		(call "string class [Newmoon]Newmoon.Primitive::Gensym(string)")))))
 
 (begin-for-syntax
- (define apply
-   (%assemble () ()
-     (c "return(apply_oop);")
-     (scheme apply)
-     (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
+ (define (apply fn . args)
+   (%assemble (fn args) (fn args)
+     (scheme (apply apply fn args)))))
+
+;; FIXME: something must be done to make this variant work, so we
+;; don't have to rely on the variant above
+;;
+;; (begin-for-syntax
+;;  (define apply
+;;    (%assemble () ()
+;;      (c "return(apply_oop);")
+;;      (scheme apply)
+;;      (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
 
 ;; These are the core macros.
 
