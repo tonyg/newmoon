@@ -10,4 +10,4 @@ clean:
 	rm -f libnewmoon.so
 
 libnewmoon.so: runtime.c
-	$(LIBTOOL) --tag=gcc --mode=link gcc -g -O0 -fomit-frame-pointer -fno-pic -c -o $@ $<
+	$(LIBTOOL) --tag=CC --mode=link gcc -g -O0 -fomit-frame-pointer -fno-pic -c -o $@ $<
