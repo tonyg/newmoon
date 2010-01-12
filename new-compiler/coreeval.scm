@@ -33,6 +33,14 @@
 
 (define *coreeval-magic* (cons "coreeval" "magic"))
 
+(define (coreeval$apply magic args)
+  (if (eq? magic *coreeval-magic*)
+      (let ((k (car args))
+	    (fn (cadr args))
+	    (args (cddr args)))
+	(k *coreeval-magic* (list (apply apply fn args))))
+      (error "Expected magic in coreeval$apply")))
+
 (define (cps2->closure node)
   (define (make-accessor generate-box-loads name location)
     (node-match location

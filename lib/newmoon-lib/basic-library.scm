@@ -312,19 +312,11 @@
 		(call "string class [Newmoon]Newmoon.Primitive::Gensym(string)")))))
 
 (begin-for-syntax
- (define (apply fn . args)
-   (%assemble (fn args) (fn args)
-     (scheme (apply apply fn args)))))
-
-;; FIXME: something must be done to make this variant work, so we
-;; don't have to rely on the variant above
-;;
-;; (begin-for-syntax
-;;  (define apply
-;;    (%assemble () ()
-;;      (c "return(apply_oop);")
-;;      (scheme apply)
-;;      (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
+ (define apply
+   (%assemble () ()
+     (c "return(apply_oop);")
+     (scheme coreeval$apply)
+     (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
 
 ;; These are the core macros.
 
