@@ -77,7 +77,6 @@
 
 (define (annotate-in-env env callback)
   (define (annotate-exp node)
-    (pretty-print `(exp ,(node-type-name (node-type node))))
     (node-match node
       ((@cps-apply cont rator rands)
        (make-node @cps2-apply cont (annotate-value rator) (map annotate-value rands)))
@@ -87,7 +86,6 @@
        (make-node @cps2-exp-if (annotate-value test) (annotate-exp true) (annotate-exp false)))))
 
   (define (annotate-value node)
-    (pretty-print `(val ,(node-type-name (node-type node))))
     (node-match node
       ((@cps-lit value) (make-node @cps2-lit value))
       ((@cps-void) (make-node @cps2-void))
