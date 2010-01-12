@@ -107,7 +107,7 @@
       ((@cps-set name expr)
        (make-node @cps2-set name (find-location name env) (annotate-value expr)))
       ((@cps-value-begin head tail)
-       (make-node @cps2-value-begin (annotate-value head) (annotate-exp tail)))
+       (make-node @cps2-value-begin (annotate-value head) (annotate-value tail)))
       ((@cps-value-if test true false)
        (make-node @cps2-value-if
 		  (annotate-value test) (annotate-value true) (annotate-value false)))))
