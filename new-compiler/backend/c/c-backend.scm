@@ -223,6 +223,11 @@
 (define (arginfo->id arginfo)
   (mangle-id (@arginfo-name arginfo)))
 
+(define (arginfo->ctype arginfo)
+  (if (@arginfo-cont arginfo)
+      "continuation"
+      "oop"))
+
 (define (capture-index capture)
   (@loc-local-index (@capture-new-location capture)))
 
@@ -239,7 +244,7 @@
   (cdr (assq index capture-map)))
 
 (define (capture-type capture)
-  "oop")
+  (arginfo->ctype (@capture-arginfo capture)))
 
 (define (capture-source-arg-for-index index)
   (string-append "cap_"(number->string index)))
@@ -365,7 +370,7 @@
 	  (filter-map (lambda (loc)
 			(let ((ai (@loc-local-arginfo loc)))
 			  (and (not (@arginfo-is-rest ai))
-			       `(,(arginfo->id ai) "oop"))))
+			       `(,(arginfo->id ai) ,(arginfo->ctype ai)))))
 		      formals))
 
 	(record-structure! (make-structdef envdefname `(("header" "object_header")
