@@ -563,7 +563,7 @@
       (build-closure 'invalid-parent-fn '() node (lambda (varname lambdaname) varname)))
 
     (define (gen-program-entry-point)
-      (let ((entry (new-function! "main" '() 'int #f `((argc int) (argv (* char))))))
+      (let ((entry (new-function! "main" '() '"int" #f `(("argc" "int") ("argv" (* "char"))))))
 	(add-instrs! entry `((return (newmoon_main argc argv |InitGlobals| |Startup|))))))
 
     ;;---------------------------------------------------------------------------
