@@ -407,7 +407,7 @@
 	  (for-each (lambda (loc)
 		      (when (@loc-local-boxed? loc)
 			(add-instr! code `(installbox
-					   ,(arginfo->id (@loc-local-arginfo arginfo))))))
+					   ,(arginfo->id (@loc-local-arginfo loc))))))
 		    formals)
 	  (add-instr! code (gen-node code capture-map expr)))
 
