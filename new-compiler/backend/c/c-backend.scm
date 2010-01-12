@@ -468,7 +468,7 @@
 	(let* ((c-code (cond
 			((find (lambda (clause) (eq? 'c (@backend-asm-name clause))) code)
 			 => @backend-asm-code)
-			(else (error `(cps2-asm missing-c-clause ,node)))))
+			(else (error `(cps2-asm missing-c-clause ,(node->list node))))))
 	       (tempname (next-temp)))
 	  (add-local! fn tempname 'oop "NULL")
 	  (add-instr! fn '(push-temporary-scope))
