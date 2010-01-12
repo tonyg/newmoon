@@ -1,160 +1,200 @@
 ;; node.scm
 ;;
-;; Defines AST nodes, a macro for binding variables from a node, and a
-;; language-checker for dynamic type checking.
+;; AST nodes
+
+;;; Core
+
+(define-record-type node-field-type
+  (make-node-field-type* name validator)
+  node-field-type?
+  (name node-field-type-name)
+  (validator node-field-type-validator*))
+
+(define-record-type node-type
+  (make-node-type* name fields)
+  node-type?
+  (name node-type-name)
+  (fields node-type-fields))
 
 (define-record-type node
-  (make-node* kind fields)
+  (make-node* type fields)
   node?
-  (kind node-kind)
-  (fields node-fields set-node-fields!))
+  (type node-type)
+  (fields node-fields))
 
-(define (make-node kind . fields0)
-  (make-node* kind
-	      (let loop ((fields fields0))
-		(cond
-		 ((null? fields) '())
-		 ((null? (cdr fields)) (error "Odd number of arguments to make-node"
-					      (list kind fields0)))
-		 (else (cons (list (car fields) (cadr fields)) (loop (cddr fields))))))))
+(define (node-field-type-validator ft)
+  (force (node-field-type-validator* ft)))
 
-(define (node-kind? node k)
-  (eq? (node-kind node) k))
+(defmacro define-node-type (typename . fieldspecs)
+  (define (mkspec spec)
+    `(make-node-field-type* ',(car spec)
+			    (delay ,(cadr spec))))
+  (define (mkgetter spec)
+    `(define ,(symbol-append (symbol-append typename '-) (car spec))
+       (node-getter ,typename ',(car spec))))
+  `(begin
+     (define ,typename (make-node-type* ',typename
+					(vector ,@(map mkspec fieldspecs))))
+     ,@(map mkgetter fieldspecs)))
 
-(define (node-get node kind name)
-  (if (eq? kind (node-kind node))
-      (let ((cell (assq name (node-fields node))))
-	(if cell
-	    (cadr cell)
-	    (error "Unknown field name in node-get:" (list (node-kind node) name node))))
-      (error "Node kind did not match in node-get:" (list (node-kind node) kind node))))
+(defmacro define-language (langname . nodetypedefs)
+  `(begin
+     ,@(map (lambda (nodetypedef)
+	      (if (symbol? nodetypedef)
+		  `(begin)
+		  `(define-node-type ,@nodetypedef)))
+	    nodetypedefs)
+     (define ,langname (%or ,@(map (lambda (nodetypedef)
+				     (if (symbol? nodetypedef)
+					 nodetypedef
+					 (car nodetypedef)))
+				   nodetypedefs)))))
 
-(define (node-getter kind name)
-  (lambda (node) (node-get node kind name)))
+(define (node-type-field-index type field-name)
+  (let ((v (node-type-fields type)))
+    (let loop ((i 0))
+      (cond
+       ((= i (vector-length v)) (error "Unknown field name" type field-name))
+       ((eq? (node-field-type-name (vector-ref v i)) field-name) i)
+       (else (loop (+ i 1)))))))
 
-(define (node-get/default! node name deft)
-  (let ((cell (assq name (node-fields node))))
-    (if cell
-	(cadr cell)
-	(begin
-	  (set-node-fields! node (cons (list name deft) (node-fields node)))
-	  deft))))
+(define (make-node type . fields0)
+  ;; TODO: construct and reuse singleton nullary nodes, now that nodes are immutable
+  (when (not (node-type? type))
+    (error "make-node not given node-type" type fields0))
+  (let ((fields (list->vector fields0))
+	(field-types (node-type-fields type)))
+    (let ((field-count (vector-length fields)))
+      (if (= field-count (vector-length field-types))
+	  (do ((i 0 (+ i 1)))
+	      ((= i field-count) (make-node* type fields))
+	    (let ((field (vector-ref fields i))
+		  (field-type (vector-ref field-types i)))
+	      (when (not (apply-validator (node-field-type-validator field-type) field))
+		(error "Validation failure" type field-type field))))
+	  (error "Wrong number of fields" type fields)))))
 
-(define (node-set! node kind name value)
-  (if (eq? kind (node-kind node))
-      (let ((cell (assq name (node-fields node))))
-	(if cell
-	    (set-car! (cdr cell) value)
-	    (set-node-fields! node (cons (list name value) (node-fields node)))))
-      (error "Node kind did not match in node-set!:" (list (node-kind node) kind node))))
+(define (node-getter type name)
+  (let ((i (node-type-field-index type name)))
+    (lambda (node)
+      (if (node-kind? node type)
+	  (vector-ref (node-fields node) i)
+	  (error "Wrong node-type in getter" type name node)))))
 
-(define (node-push! node kind name value)
-  (node-set! node kind name (cons value (node-get node kind name))))
+(define (node-get node type name)
+  ((node-getter type name) node))
 
-(define (node->list node)
+(define (node-kind? node type)
+  (when (not (node? node))
+    (error "Expected node in node-kind?" node type))
+  (when (not (node-type? type))
+    (error "Expected node-type in node-kind?" node type))
+  (eq? (node-type node) type))
+
+(define (node-fold child-attrs-of node-fn node)
+  (let walk ((node node))
+    (node-fn node
+	     (lambda (node)
+	       (let* ((t (node-type node))
+		      (new-fields ;; Bletch, no vector-clone:
+		       (list->vector (vector->list (node-fields node))))
+		      (new-node (make-node* t new-fields)))
+		 (let loop ((attrnames (child-attrs-of node)))
+		   (cond
+		    ((null? attrnames))
+		    ((symbol? attrnames)
+		     (let ((i (node-type-field-index t attrnames)))
+		       (vector-set! new-fields i (map walk (vector-ref new-fields i)))))
+		    (else
+		     (let ((i (node-type-field-index t (car attrnames))))
+		       (vector-set! new-fields i (walk (vector-ref new-fields i)))
+		       (loop (cdr attrnames))))))
+		 new-node)))))
+
+(define (node->list x)
   (cond
-   ((node? node) (cons (node-kind node) (node->list (node-fields node))))
-   ((pair? node) (cons (node->list (car node)) (node->list (cdr node))))
-   (else node)))
+   ((pair? x) (cons (node->list (car x)) (node->list (cdr x))))
+   ((vector? x) (list->vector (map node->list (vector->list x))))
+   ((node? x) (let ((t (node-type x)))
+		`(,(node-type-name t) ,@(map (lambda (d v)
+					       `(,(node-field-type-name d) ,(node->list v)))
+					     (vector->list (node-type-fields t))
+					     (vector->list (node-fields x))))))
+   (else x)))
 
-(define (lookup-language-token token language)
-  (cond
-   ((assq token language) => cadr)
-   (else (error "Missing language token" (list token language)))))
+;;; Validators
 
-(define (type-error node type)
-  (error "Language error" (list node type)))
+(define (apply-validator validator value)
+  (if (node-type? validator)
+      ((%node validator) value)
+      (validator value)))
 
-(define (check-language node start-token language error-handler)
-  (let validate ((node node)
-		 (type start-token))
-    (cond
-     ((procedure? type) (type node))
-     ((symbol? type) (or (validate node (lookup-language-token type language))
-			 (and error-handler (error-handler node type))))
-     ((pair? type)
-      (case (car type)
-	((%or) (let loop ((types (cdr type)))
-		 (if (null? types)
-		     #f
-		     (or (validate node (car types))
-			 (loop (cdr types))))))
-	((%list-of) (and (list? node)
-			 (every (lambda (n) (validate n (cadr type))) node)))
-	(else
-	 (and (node? node)
-	      (eq? (car type) (node-kind node))
-	      (let loop ((type-fields (cdr type)))
-		(or (null? type-fields)
-		    (let* ((expected-field-name (caar type-fields))
-			   (expected-field-type (cadar type-fields))
-			   (field-cell (assq expected-field-name (node-fields node))))
-		      (and field-cell
-			   (validate (cadr field-cell) expected-field-type)
-			   (loop (cdr type-fields))))))))))
-     ((eq? type #t) #t)
-     ((eq? type #f) #f)
-     (else (error "Illegal language" (list type language))))))
+(define %any
+  (lambda (value)
+    #t))
 
-(define (node-collect-subnodes expr attrs)
-  (let loop ((attrs attrs))
-    (cond
-     ((null? attrs) '())
-     ((pair? attrs) (cons (node-get expr (node-kind expr) (car attrs))
-			  (loop (cdr attrs))))
-     (else
-      (node-get expr (node-kind expr) attrs)))))
+(define (%or . validators)
+  (lambda (value)
+    (let loop ((validators validators))
+      (if (null? validators)
+	  #f
+	  (or (apply-validator (car validators) value)
+	      (loop (cdr validators)))))))
 
-(define (node-tree-foreach child-attrs-of fn node)
-  (fn node)
-  (for-each (lambda (child) (node-tree-foreach fn child))
-	    (node-collect-subnodes node (child-attrs-of node))))
+(define (%list-of validator)
+  (define (loop value)
+    (or (null? value)
+	(and (pair? value)
+	     (apply-validator validator (car value))
+	     (loop (cdr value)))))
+  loop)
 
-(define (node-children-map! child-attrs-of fn node)
-  (let loop ((attrs (child-attrs-of node)))
-    (cond
-     ((null? attrs) node)
-     ((pair? attrs)
-      (let* ((name (car attrs))
-	     (cell (assq name (node-fields node)))
-	     (oldval (cadr cell))
-	     (newval (fn oldval)))
-	(when (not (eq? oldval newval))
-	  (set-car! (cdr cell) newval))
-	(loop (cdr attrs))))
-     (else
-      (let ((cell (assq attrs (node-fields node))))
-	(set-car! (cdr cell) (map fn (cadr cell))))))))
+(define %set-of %list-of) ;; ick.
 
-(define-syntax node-match
-  (let ()
-    (lambda (x)
-      (syntax-case x (else)
-	((_ expr clause ...)
-	 (not (boolean? (syntax->datum (syntax expr))))
-	 (syntax (let* ((v expr)
-			(k (node-kind v)))
-		   (node-match #f v k clause ...))))
+(define (%box-of validator)
+  (lambda (value)
+    (and (box? value)
+	 (apply-validator validator (unbox value)))))
 
-	((_ #f v k)
-	 (syntax (error "node-match: no match for node-kind" k)))
+(define (%node type)
+  (lambda (value)
+    (and (node? value)
+	 (node-kind? value type)
+	 ;; no need to check fields, done at node construction time
+	 )))
 
-	((_ #f v k (else expr ...))
-	 (syntax (begin expr ...)))
+(define (true? x) x)
+(define (false? x) (not x))
 
-	((_ #f v k ((kind var ...) body ...) clause ...)
-	 (syntax (if (eq? k 'kind)
-		     (node-match #t v kind (var ...) () body ...)
-		     (node-match #f v k clause ...))))
+(define (%optional validator)
+  (%or false? validator))
 
-	((_ #t v kind () (binding ...) body ...)
-	 (syntax (let (binding ...)
-		   body ...)))
+(defmacro node-match (expr . clauses)
+  (let ((v (compiler-gensym))
+	(ty (compiler-gensym)))
+    (define (mkclauses clauses)
+      (if (null? clauses)
+	  `(error "No match in node-match" ,ty ,v)
+	  (let ((clause (car clauses)))
+	    (if (eq? (car clause) 'else)
+		`(begin ,@(cdr (car clauses)))
+		(let* ((pat (car clause))
+		       (type-name (car pat))
+		       (body-exps (cdr clause)))
+		  (define (getter-for name)
+		    (symbol-append (symbol-append type-name '-) name))
+		  (define (mkbinding binding)
+		    (if (symbol? binding)
+			`(,binding (,(getter-for binding) ,v))
+			`(,(car binding) (,(getter-for (cadr binding)) ,v))))
+		  `(if (eq? ,ty ,type-name)
+		       (let ,(map mkbinding (cdr pat))
+			 ,@body-exps)
+		       ,(mkclauses (cdr clauses))))))))
+    `(let* ((,v ,expr)
+	    (,ty (node-type ,v)))
+       ,(mkclauses clauses))))
 
-	((_ #t v kind ((var name) vars ...) (binding ...) body ...)
-	 (syntax (node-match #t v kind (vars ...) ((var (node-get v 'kind 'name)) binding ...)
-			     body ...)))
-
-	((_ #t v kind (var vars ...) (binding ...) body ...)
-	 (syntax (node-match #t v kind (vars ...) ((var (node-get v 'kind 'var)) binding ...)
-			     body ...)))))))
+;;; Local Variables:
+;;; eval: (put 'node-match 'scheme-indent-function 1)
+;;; End:

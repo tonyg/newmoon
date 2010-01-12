@@ -2,7 +2,7 @@
 
 (define sys$macros (make-hash-table))
 
-(define (%define-macro-transformer name kind transformer)
+(define ($define-macro-transformer name kind transformer)
   (hash-table-put! sys$macros name (cons kind transformer)))
 
 (define macro-expand
@@ -22,31 +22,25 @@
       (any (lambda (x) (memq id x)) scope))
 
     (define (make-begin exprs)
-      (make-node 'begin
-		 'exprs exprs))
+      (make-node @core-begin exprs))
 
     (define (make-lit literal-value)
-      (make-node 'lit
-		 'value literal-value))
+      (make-node @core-lit literal-value))
 
     (define (make-apply rator rands)
-      (make-node 'apply
-		 'rator rator
-		 'rands rands))
+      (make-node @core-apply rator rands))
 
     (define (make-defmacro name kind transformer)
-      (make-apply (make-node 'var 'name '%define-macro-transformer)
+      (make-apply (make-node @core-var '$define-macro-transformer)
 		  (list (make-lit name)
 			(make-lit kind)
 			transformer)))
 
     (define (parse-backend-asm clause)
-      (make-node 'backend-asm
-		 'name (car clause)
-		 'code (cdr clause)))
+      (make-node @backend-asm (car clause) (cdr clause)))
 
     (define (build-and-define-macro name kind transformer)
-      (%define-macro-transformer name kind (core-scheme-eval transformer))
+      ($define-macro-transformer name kind (core-scheme-eval transformer))
       (make-defmacro name kind transformer))
 
     (lambda (expr)
@@ -54,12 +48,11 @@
 
 	(define (make-lambda formals body)
 	  (let* ((rib (listify formals))
-		 (new-scope (cons rib scope))
-		 (varargs (not (list? formals))))
-	    (make-node 'lambda
-		       'formals rib
-		       'varargs varargs
-		       'body (map (lambda (x) (expand/scope new-scope x)) body))))
+		 (new-scope (cons rib scope)))
+	    (make-node @core-lambda
+		       rib
+		       (not (list? formals))
+		       (map (lambda (x) (expand/scope new-scope x)) body))))
 
 	(let expand ((expr expr))
 	  (cond
@@ -73,12 +66,12 @@
 	    => (lambda (m)
 		 (if (eq? (car m) 'id)
 		     (expand (make-apply (cdr m) '()))
-		     (make-node 'var 'name expr))))
+		     (make-node @core-var expr))))
 	   ;; If it's a symbol here, it's either present in our
 	   ;; lexical scope, or a non-identifier-macro reference. This
 	   ;; makes it a variable reference.
 	   ((symbol? expr)
-	    (make-node 'var 'name expr))
+	    (make-node @core-var expr))
 	   ;; If it's not a pair here, either it's a pre-expanded
 	   ;; node, in which case it should be returned without
 	   ;; further wrapping, or it's a literal, in which case it
@@ -101,21 +94,20 @@
 	   (else
 	    (case (car expr)
 	      ((quote)		(make-lit (cadr expr)))
-	      ((%assemble)	(make-node 'asm
-					   'formals (cadr expr)
-					   'actuals (map expand (caddr expr))
-					   'code (map parse-backend-asm (cdddr expr))))
-	      ((%backend)	(make-node 'backend
-					   'backend-name (cadr expr)
-					   'arguments (cddr expr)))
+	      ((%assemble)	(make-node @core-asm
+					   (cadr expr)
+					   (map expand (caddr expr))
+					   (map parse-backend-asm (cdddr expr))))
+	      ((%backend)	(make-node @core-backend
+					   (cadr expr)
+					   (cddr expr)))
 	      ((define)		(if (pair? (cadr expr))
-				    (make-node 'define
-					       'name (caadr expr)
-					       'expr (make-lambda (cdadr expr)
-								  (cddr expr)))
-				    (make-node 'define
-					       'name (cadr expr)
-					       'expr (expand (caddr expr)))))
+				    (make-node @core-define
+					       (caadr expr)
+					       (make-lambda (cdadr expr) (cddr expr)))
+				    (make-node @core-define
+					       (cadr expr)
+					       (expand (caddr expr)))))
 	      ((defmacro)	(let ((name (cadr expr))
 				      (args (caddr expr))
 				      (body (cdddr expr)))
@@ -131,15 +123,15 @@
 				(let ((exprs (make-begin (map expand (cdr expr)))))
 				  (core-scheme-eval exprs)
 				  exprs))
-	      ((if)		(make-node 'if
-					   'test (expand (cadr expr))
-					   'true (expand (caddr expr))
-					   'false (if (null? (cdddr expr))
-						      (make-node 'void)
-						      (expand (car (cdddr expr))))))
-	      ((set!)		(make-node 'set
-					   'name (cadr expr)
-					   'expr (expand (caddr expr))))
+	      ((if)		(make-node @core-if
+					   (expand (cadr expr))
+					   (expand (caddr expr))
+					   (if (null? (cdddr expr))
+					       (make-node @core-void)
+					       (expand (car (cdddr expr))))))
+	      ((set!)		(make-node @core-set
+					   (cadr expr)
+					   (expand (caddr expr))))
 	      ((require)	(visit-libraries (cdr expr))
 				(expand `(require-libraries ',(cdr expr))))
 	      (else

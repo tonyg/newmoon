@@ -1,7 +1,10 @@
 ;;;;; MAIN ENTRY POINT FOR SYSTEM
 
-(define (compiler-gensym)
-  (gensym "GENSYM"))
+(begin-for-syntax
+ (define (compiler-gensym)
+   (gensym "GENSYM"))
+ (define (symbol-append a b)
+   (string->symbol (string-append (symbol->string a) (symbol->string b)))))
 
 (defmacro compiler-assert (excp-sym test-expr . more)
   `(when (not ,test-expr)
@@ -14,6 +17,7 @@
 ;;; Load compiler modules
 
 (include "node.scm")
+(include "absyn.scm")
 
 (include "macro.scm")
 (include "toplevel.scm")

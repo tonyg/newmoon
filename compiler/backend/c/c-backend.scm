@@ -1,66 +1,68 @@
 ;; CPS C backend, Cheney-on-the-MTA style.
 
-(define c-languages
-  `(
-    (id ,string?)
-    (type ,string?)
+(define %cid string?)
 
-    (structdef (structdef (name id)
-			  (fields (%list-of vardef))))
+(define (%ctype v)
+  (or (string? v)
+      (and (pair? v)
+	   (pair? (cdr v))
+	   (eq? (car v) '*)
+	   (%ctype (cadr v)))))
 
-    (functiondef (functiondef (name id)
-			      (modifiers (%list-of ,string?))
-			      (rettype type)
-			      (variadic? ,boolean?)
-			      (formals (%list-of vardef))
-			      (locals (%list-of vardef))
-			      (body (%list-of instr))))
+(define-node-type @structdef
+  (name %cid)
+  (fields (%list-of @vardef)))
 
-    (vardef (vardef (name id)
-		    (type type)))
+(define-node-type @functiondef
+  (name %cid)
+  (modifiers (%list-of string?))
+  (rettype %ctype)
+  (variadic? boolean?)
+  (formals (%list-of @vardef))
+  (locals (%box-of (%list-of @vardef)))
+  (body (%box-of (%list-of %cinstr))))
 
-    (instr ,(letrec ((instr? (lambda (instr)
-			       (or (symbol? instr)
-				   (string? instr)
-				   (number? instr)
-				   (and (pair? instr)
-					(symbol? (car instr))
-					(every instr? (cdr instr)))))))
-	      instr?))
-    ))
+(define-node-type @vardef
+  (name %cid)
+  (type %ctype))
+
+(define (%cinstr instr)
+  (or (symbol? instr)
+      (string? instr)
+      (number? instr)
+      (and (pair? instr)
+	   (symbol? (car instr))
+	   (every %cinstr (cdr instr)))))
+
+(define-node-type @constant-closure
+  (lambdaname %cid))
 
 (define *noreturn* "__attribute__((noreturn))")
 
 (define (make-vardef* def)
-  (if (and (node? def) (node-kind? def 'vardef))
+  (if (and (node? def) (node-kind? def @vardef))
       def
       (make-vardef (car def) (cadr def))))
 
 (define (make-vardef name type)
-  (make-node 'vardef
-	     'name name
-	     'type type))
+  (make-node @vardef name type))
 
 (define (make-structdef name fields)
-  (make-node 'structdef
-	     'name name
-	     'fields (map make-vardef* fields)))
+  (make-node @structdef name (map make-vardef* fields)))
 
 (define (make-functiondef name modifiers rettype is-variadic formals)
-  (make-node 'functiondef
-	     'name name
-	     'modifiers modifiers
-	     'rettype rettype
-	     'variadic? is-variadic
-	     'formals (map make-vardef* formals)
-	     'locals '()
-	     'body '()))
+  (make-node @functiondef name modifiers rettype is-variadic (map make-vardef* formals)
+	     (box '())
+	     (box '())))
+
+(define (push-box! b val)
+  (set-box! b (cons val (unbox b))))
 
 (define (add-local! functiondef localname localtype localinit)
-  (node-push! functiondef 'functiondef 'locals (list localname localtype localinit)))
+  (push-box! (@functiondef-locals functiondef) (list localname localtype localinit)))
 
 (define (add-instr! functiondef instr)
-  (node-push! functiondef 'functiondef 'body instr))
+  (push-box! (@functiondef-body functiondef) instr))
 
 (define (add-instrs! functiondef instrs)
   (for-each (lambda (i) (add-instr! functiondef i)) instrs))
@@ -93,7 +95,7 @@
   (cond
    ((string? strsym) strsym)
    ((symbol? strsym) (symbol->string strsym))
-   (else (error "Non-string-or-symbol in string-or-symbol->id" strsym))))
+   (else (error `(non-string-or-symbol string-or-symbol->id ,strsym)))))
 
 (define (emit port . items)
   (emit* port items))
@@ -134,34 +136,34 @@
 	((*) (emit port "")
 	     (emit-type port (cadr t))
 	     (emit port " *"))
-	(else (error "Invalid C type" t)))
+	(else (error `(invalid-c-type ,t))))
       (emit port t)))
 
 (define (emit-vardef port indent)
   (let ((pad (make-string indent #\space)))
     (lambda (vardef)
       (emit port pad)
-      (emit-type port (node-get vardef 'vardef 'type))
-      (emit port " "(node-get vardef 'vardef 'name)))))
+      (emit-type port (@vardef-type vardef))
+      (emit port " "(@vardef-name vardef)))))
 
 (define (emit-structdef port)
   (lambda (structdef)
-    (emit port "typedef struct S_"(node-get structdef 'structdef 'name))
+    (emit port "typedef struct S_"(@structdef-name structdef))
     (emit-terminated-list port
-			  (node-get structdef 'structdef 'fields)
+			  (@structdef-fields structdef)
 			  (emit-vardef port 2) " {\n" ";\n" "} ")
-    (emit port (node-get structdef 'structdef 'name)";\n\n")))
+    (emit port (@structdef-name structdef)";\n\n")))
 
 (define (emit-function-header port functiondef)
   (for-each (lambda (modifier) (emit port modifier" "))
-	    (node-get functiondef 'functiondef 'modifiers))
-  (emit-type port (node-get functiondef 'functiondef 'rettype))
-  (emit port " "(node-get functiondef 'functiondef 'name))
+	    (@functiondef-modifiers functiondef))
+  (emit-type port (@functiondef-rettype functiondef))
+  (emit port " "(@functiondef-name functiondef))
   (emit-separated-list port
-		       (node-get functiondef 'functiondef 'formals)
+		       (@functiondef-formals functiondef)
 		       (emit-vardef port 0)
 		       "(" ", " "")
-  (if (node-get functiondef 'functiondef 'variadic?)
+  (if (@functiondef-variadic? functiondef)
       (emit port ", ...)")
       (emit port ")")))
 
@@ -178,9 +180,9 @@
 		(emit port "  ")
 		(emit-type port (cadr localdef))
 		(emit port " "(car localdef)" = "(caddr localdef)";\n"))
-	      (node-get functiondef 'functiondef 'locals))
+	      (unbox (@functiondef-locals functiondef)))
     (let ((extra-scope-count (fold (emit-instr port) 0
-				   (reverse (node-get functiondef 'functiondef 'body)))))
+				   (reverse (unbox (@functiondef-body functiondef))))))
       (emit port (make-string extra-scope-count #\})"\n"))
     (emit port "}\n\n")))
 
@@ -219,25 +221,30 @@
 	old-scope-count)))))
 
 (define (arginfo->id arginfo)
-  (mangle-id (node-get arginfo 'arginfo 'name)))
+  (mangle-id (@arginfo-name arginfo)))
+
+(define (arginfo->ctype arginfo)
+  (if (@arginfo-cont arginfo)
+      "continuation"
+      "oop"))
 
 (define (capture-index capture)
-  (node-get (node-get capture 'capture 'new-location) 'loc-environment 'index))
+  (@loc-local-index (@capture-new-location capture)))
 
 (define (capture-fields captures)
   (map (lambda (capture)
-	 (let* ((arginfo (node-get capture 'capture 'arginfo)))
-	   (let* ((index (capture-index capture)))
-	     (cons index (make-vardef (string-append "env_"(number->string index)"_"
-						     (arginfo->id arginfo))
-				      (capture-type capture))))))
+	 (let ((arginfo (@capture-arginfo capture))
+	       (index (capture-index capture)))
+	   (cons index (make-vardef (string-append "env_"(number->string index)"_"
+						   (arginfo->id arginfo))
+				    (capture-type capture)))))
        captures))
 
 (define (capture-index->name index capture-map)
   (cdr (assq index capture-map)))
 
 (define (capture-type capture)
-  'oop)
+  (arginfo->ctype (@capture-arginfo capture)))
 
 (define (capture-source-arg-for-index index)
   (string-append "cap_"(number->string index)))
@@ -251,7 +258,7 @@
 (define (zero-pad-left str width)
   (let ((delta (- width (string-length str))))
   (cond
-   ((negative? delta) (error "Numeric string too wide in zero-pad-left" (list str width)))
+   ((negative? delta) (error `(numeric-string-too-wide zero-pad-left ,str ,width)))
    ((zero? delta) str)
    (else (string-append (make-string delta #\0) str)))))
 
@@ -339,21 +346,20 @@
 	    vec)))
        ((node? value)
 	(node-match value
-		    ((constant-closure lambdaname)
-		     (let ((name (next-temp)))
-		       (add-instr! fn `(allocenv constant_closure_env 0 ,lambdaname ,name))
-		       name))))
+	  ((@constant-closure lambdaname)
+	   (let ((name (next-temp)))
+	     (add-instr! fn `(allocenv constant_closure_env 0 ,lambdaname ,name))
+	     name))))
        (else
-	(error "gen-literal-initialiser: unimplemented literal kind" value))))
+	(error `(unimplemented-literal-kind gen-literal-initialiser ,value)))))
 
     (define (build-closure parent-fn capture-instrs node receive-closure)
-      (let* ((cont (node-get node 'cps-lambda 'cont))
-	     (is-continuation (not cont)) ;; no continuation arg --> we *are* a continuation
-	     (formals (node-get node 'cps-lambda 'formals))
-	     (captures (node-get node 'cps-lambda 'captures))
+      (let* ((is-continuation (@cps2-lambda-is-continuation node))
+	     (formals (@cps2-lambda-formals node))
+	     (captures (@cps2-lambda-captures node))
 	     (num-captures (length captures))
-	     (varargs (node-get node 'cps-lambda 'varargs))
-	     (expr (node-get node 'cps-lambda 'expr))
+	     (varargs (@cps2-lambda-varargs node))
+	     (expr (@cps2-lambda-expr node))
 	     (arity (let ((fl (length formals))) (if varargs (- fl 1) fl)))
 	     (lambdaname (next-lambda-name))
 	     (envdefname (next-envdef-name))
@@ -361,59 +367,52 @@
 	     (capture-map (capture-fields captures)))
 
 	(define (formals->argdefs formals)
-	  (cond
-	   ((null? formals) '())
-	   ((node-get (car formals) 'arginfo 'is-rest) (formals->argdefs (cdr formals)))
-	   (else (cons `(,(arginfo->id (car formals)) oop) (formals->argdefs (cdr formals))))))
+	  (filter-map (lambda (loc)
+			(let ((ai (@loc-local-arginfo loc)))
+			  (and (not (@arginfo-is-rest ai))
+			       `(,(arginfo->id ai) ,(arginfo->ctype ai)))))
+		      formals))
 
-	(record-structure! (make-structdef envdefname `((header object_header)
-							(code newmoon_code)
+	(record-structure! (make-structdef envdefname `(("header" "object_header")
+							("code" "newmoon_code")
 							,@(map cdr capture-map))))
 
 	;; Construct closure instance
 	(if (null? captures)
-	    (set! newcloname (record-literal! #f
-					      (lambda () (make-node 'constant-closure
-								    'lambdaname lambdaname))))
+	    (set! newcloname
+		  (record-literal! #f (lambda () (make-node @constant-closure lambdaname))))
 	    (add-instr! parent-fn `(allocenv ,envdefname
 					     ,(length capture-map)
 					     ,lambdaname
 					     ,newcloname)))
 	(for-each (lambda (capture capture-instr)
-		    (let* ((cap-cont (node-get (node-get capture 'capture 'arginfo)
-					       'arginfo 'cont))
+		    (let* ((cap-cont (@arginfo-cont (@capture-arginfo capture)))
 			   (index (capture-index capture))
 			   (v (capture-index->name index capture-map)))
 			(add-instr! parent-fn `(storeenv ,newcloname
-							 ,(node-get v 'vardef 'name)
+							 ,(@vardef-name v)
 							 ,capture-instr))))
 		  captures capture-instrs)
 
 	(let ((code (new-function! lambdaname
 				   `("static" ,*noreturn*)
-				   'void
+				   "void"
 				   varargs
-				   `((self (* ,envdefname))
-				     (argc int)
-				     ,@(if is-continuation
-					   '()
-					   `((k continuation)))
+				   `(("self" (* ,envdefname))
+				     ("argc" "int")
 				     ,@(formals->argdefs formals)))))
 	  (when varargs
-	    (let ((rest-arginfo (car (filter (lambda (f) (node-get f 'arginfo 'is-rest))
-					     formals)))
-		  (penultimate-vardef (last (node-get code 'functiondef 'formals))))
+	    (let ((rest-arginfo (car (filter @arginfo-is-rest
+					     (map @loc-local-arginfo formals))))
+		  (penultimate-vardef (last (@functiondef-formals code))))
 	      (add-instrs! code `((deftemp ,(arginfo->id rest-arginfo) (mknull))
 				  (extractvarargs ,(arginfo->id rest-arginfo)
 						  ,arity
-						  ,(node-get penultimate-vardef
-							     'vardef 'name))))))
-	  (for-each (lambda (arginfo)
-		      (when (arginfo-boxed? arginfo)
-			(begin
-			  (compiler-assert continuation-arginfo-never-boxed
-					   (not (node-get arginfo 'arginfo 'cont)))
-			  (add-instr! code `(installbox ,(arginfo->id arginfo))))))
+						  ,(@vardef-name penultimate-vardef))))))
+	  (for-each (lambda (loc)
+		      (when (@loc-local-boxed? loc)
+			(add-instr! code `(installbox
+					   ,(arginfo->id (@loc-local-arginfo loc))))))
 		    formals)
 	  (add-instr! code (gen-node code capture-map expr)))
 
@@ -441,46 +440,40 @@
 	 (else
 	  (record-literal! value (lambda () value)))))
 
-      (define (gen-local-load arginfo location)
-	(node-match location
-		    ((loc-continuation) 'k)
-		    ((loc-argument index) (arginfo->id arginfo))
-		    ((loc-environment index)
-		     (let ((v (capture-index->name index capture-map)))
-		       `(envref self ,(node-get v 'vardef 'name))))))
+      (define (gen-local-load loc)
+	(case (@loc-local-source loc)
+	  ((argument) (arginfo->id (@loc-local-arginfo loc)))
+	  ((environment) (let ((v (capture-index->name (@loc-local-index loc) capture-map)))
+			   `(envref self ,(@vardef-name v))))))
 
-      (define (gen-local-store arginfo location instr)
-	(node-match location
-		    ((loc-continuation) `(settemp k ,instr))
-		    ((loc-argument index) `(settemp ,(arginfo->id arginfo) ,instr))
-		    ((loc-environment index) `(setenv env
-						      ,(capture-index->name index capture-map)
-						      ,instr))))
+      (define (gen-local-store loc instr)
+	(case (@loc-local-source loc)
+	  ((argument) `(settemp ,(arginfo->id (@loc-local-arginfo loc)) ,instr))
+	  ((environment) `(setenv env
+				  ,(capture-index->name (@loc-local-index loc) capture-map)
+				  ,instr))))
 
-      (define (gen-local-get arginfo location)
-	(if (arginfo-boxed? arginfo)
-	    `(getbox ,(gen-local-load arginfo location))
-	    (gen-local-load arginfo location)))
-
-      (define (gen-global-get name)
-	`(globalget ,(mangle-id (record-global! name))))
+      (define (gen-get name loc)
+	(node-match loc
+	  ((@loc-local)
+	   (if (@loc-local-boxed? loc)
+	       `(getbox ,(gen-local-load loc))
+	       (gen-local-load loc)))
+	  ((@loc-global)
+	   `(globalget ,(mangle-id (record-global! name))))))
 
       (define (gen-closure-instantiation node receive-closure)
-	(let* ((captures (node-get node 'cps-lambda 'captures))
+	(let* ((captures (@cps2-lambda-captures node))
 	       (capture-instrs (map (lambda (capture)
-				      (let* ((old-loc (node-get capture 'capture 'old-location))
-					     (arginfo (node-get capture 'capture 'arginfo)))
-					(gen-local-load arginfo old-loc)))
+				      (gen-local-load (@capture-old-location capture)))
 				    captures)))
 	  (build-closure fn capture-instrs node receive-closure)))
 
       (define (gen-asm formals actuals code)
 	(let* ((c-code (cond
-			((find (lambda (clause)
-				 (eq? 'c (node-get clause 'backend-asm 'name)))
-			       code)
-			 => (lambda (clause) (node-get clause 'backend-asm 'code)))
-			(else (error "cps-asm missing c clause" node))))
+			((find (lambda (clause) (eq? 'c (@backend-asm-name clause))) code)
+			 => @backend-asm-code)
+			(else (error `(cps2-asm missing-c-clause ,(node->list node))))))
 	       (tempname (next-temp)))
 	  (add-local! fn tempname 'oop "NULL")
 	  (add-instr! fn '(push-temporary-scope))
@@ -493,12 +486,12 @@
 						(cond
 						 ((symbol? instr)
 						  (cdr (or (assq instr env)
-							   (error "cps-asm: unknown formal"
-								  (list instr node)))))
+							   (error `(cps2-asm unknown-formal
+									     ,instr ,node)))))
 						 ((string? instr)
 						  instr)
-						 (else (error "cps-asm: invalid C syntax"
-							      (list instr node)))))
+						 (else (error `(cps2-asm invalid-c-syntax
+									 ,instr ,node)))))
 					      c-code))))
 	  (add-instr! fn `(end-literal-c ,tempname))
 	  tempname))
@@ -508,18 +501,18 @@
 	  (record-literal-c-stanza! arguments))
 	`(mkvoid))
 
-      (define (gen-local-set arginfo location expr)
-	(if (arginfo-boxed? arginfo)
-	    `(setbox ,(gen-local-load arginfo location)
-		     ,(gen expr))
-	    (gen-local-store arginfo location (gen expr))))
-
-      (define (gen-global-set name expr)
-	`(globalset ,(mangle-id (record-global! name)) ,(gen expr)))
+      (define (gen-set name loc expr)
+	(node-match loc
+	  ((@loc-local)
+	   (if (@loc-local-boxed? loc)
+	       `(setbox ,(gen-local-load loc) ,(gen expr))
+	       (gen-local-store loc (gen expr))))
+	  ((@loc-global)
+	   `(globalset ,(mangle-id (record-global! name)) ,(gen expr)))))
 
       (define (gen-apply cont rator rands)
 	(let ((arity (length rands)))
-	  (if (node-kind? rator 'cps-lambda)
+	  (if (node-kind? rator @cps2-lambda)
 	      (gen-closure-instantiation rator
 					 (lambda (varname lambdaname)
 					   `(directcall ,lambdaname
@@ -547,20 +540,19 @@
 
       (define (gen node)
 	(node-match node
-		    ((cps-lit value) (gen-literal value))
-		    ((cps-void) `(mkvoid))
-		    ((cps-local-get name arginfo location) (gen-local-get arginfo location))
-		    ((cps-global-get name) (gen-global-get name))
-		    ((cps-lambda cont formals varargs captures globals expr)
-		     (gen-closure-instantiation node (lambda (varname lambdaname) varname)))
-		    ((cps-asm formals actuals code) (gen-asm formals actuals code))
-		    ((cps-backend backend-name arguments) (gen-backend backend-name arguments))
-		    ((cps-local-set name arginfo location expr)
-		     (gen-local-set arginfo location expr))
-		    ((cps-global-set name expr) (gen-global-set name expr))
-		    ((cps-apply cont rator rands) (gen-apply cont rator rands))
-		    ((cps-begin head tail) (gen-begin head tail))
-		    ((cps-if test true false) (gen-if test true false))))
+	  ((@cps2-lit value) (gen-literal value))
+	  ((@cps2-void) `(mkvoid))
+	  ((@cps2-get name location) (gen-get name location))
+	  ((@cps2-lambda) (gen-closure-instantiation node (lambda (varname lambdaname) varname)))
+	  ((@cps2-asm formals actuals code) (gen-asm formals actuals code))
+	  ((@cps2-backend backend-name arguments) (gen-backend backend-name arguments))
+	  ((@cps2-set name location expr) (gen-set name location expr))
+	  ((@cps2-value-begin head tail) (gen-begin head tail))
+	  ((@cps2-value-if test true false) (gen-if test true false))
+	  ((@cps2-apply cont rator rands) (gen-apply cont rator rands))
+	  ((@cps2-exp-begin head tail) (gen-begin head tail))
+	  ((@cps2-exp-if test true false) (gen-if test true false))))
+
       (gen node))
 
     (define (gen-module-entry-point node)
@@ -568,15 +560,15 @@
       ;; a real lambda-proc, not a lambda-cont (or lambda-jump, once
       ;; we implement those).
       (compiler-assert module-entry-point-is-lambda-proc
-		       (and (node-kind? node 'cps-lambda)
-			    (node-get node 'cps-lambda 'cont)))
+		       (and (node-kind? node @cps2-lambda)
+			    (not (@cps2-lambda-is-continuation node))))
       ;; It also has to have no captures.
       (compiler-assert module-entry-point-has-no-captures
-		       (null? (node-get node 'cps-lambda 'captures)))
+		       (null? (@cps2-lambda-captures node)))
       (build-closure 'invalid-parent-fn '() node (lambda (varname lambdaname) varname)))
 
     (define (gen-program-entry-point)
-      (let ((entry (new-function! "main" '() 'int #f `((argc int) (argv (* char))))))
+      (let ((entry (new-function! "main" '() '"int" #f `(("argc" "int") ("argv" (* "char"))))))
 	(add-instrs! entry `((return (newmoon_main argc argv |InitGlobals| |Startup|))))))
 
     ;;---------------------------------------------------------------------------
@@ -599,7 +591,7 @@
 			       (lambda (globalname dummy)
 				 (emit o "defglobal("(mangle-id globalname)");\n")))
 	  (emit o "\n")
-	  (let* ((global-initialiser (new-function! "InitGlobals" '() 'void #f `()))
+	  (let* ((global-initialiser (new-function! "InitGlobals" '() "void" #f `()))
 		 (mangled-global-ids
 		  (hash-table-map global-table
 				  (lambda (globalname dummy)
@@ -619,8 +611,8 @@
 			(emit o "defliteral("literalname");\n")))
 		    literal-table)
 	  (emit o "\n")
-	  (let ((literal-initialiser (new-function! "Startup" `() 'void #f
-						    `((k continuation)))))
+	  (let ((literal-initialiser (new-function! "Startup" `() "void" #f
+						    `(("k" "continuation")))))
 	    (for-each (lambda (entry)
 			(let ((literalname (cadr entry))
 			      (literalvalue (caddr entry)))
@@ -652,6 +644,7 @@
 						    "The environment variable NEWMOON_GCC"
 						    " is not set, and neither 'glibtool'"
 						    " nor 'libtool' was found on the $PATH.")))
+					"--tag=CC"
 					"--mode=link"
 					"gcc"
 					"-g"

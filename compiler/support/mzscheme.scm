@@ -11,10 +11,22 @@
 (require srfi/1)
 (require srfi/13)
 (require srfi/9)
-(require scheme/pretty)
+(require-for-syntax scheme/pretty)
 (require mzlib/defmacro)
 (require mzlib/process)
 (require mzlib/etc)
+
+(define error
+  (let ((old-error error))
+    (lambda (msg . vals)
+      (display "---------------------------------------------------------------------------")
+      (newline)
+      (display msg)
+      (newline)
+      (for-each (compose pretty-print node->list) vals)
+      (display "---------------------------------------------------------------------------")
+      (newline)
+      (old-error msg))))
 
 (define (complete-path p)
   (let ((reldir (current-load-relative-directory)))

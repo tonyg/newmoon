@@ -7,7 +7,7 @@
   (define (extract-debug-settings arg)
     (let ((setting (substring arg 2 (string-length arg))))
       (if (string=? setting "")
-	  'sequence-phases
+	  "sequence-phases"
 	  setting)))
 
   (define (update-and-summarise-debug! new-value)
@@ -43,6 +43,10 @@
 	   ((string? expr)
 	    (compile-file expr)
 	    (interactive-main))
+	   ((and (pair? expr) (eq? (car expr) 'compile))
+	    (compile-expr (cadr expr)))
+	   ((and (pair? expr) (eq? (car expr) 'eval))
+	    (core-scheme-eval (cadr expr)))
 	   (else (case expr
 		   (else (for-each display (list "Newmoon interactive mode." #\newline
 						 "Type 'help' for help." #\newline
@@ -68,7 +72,6 @@
   (parameterize ((current-inspector (make-inspector)))
     (load-relative "support/mzscheme.scm")
     (load-relative "main.scm")
-    ;;(load-relative "backend/dotnet/dotnet-backend.scm")
     (load-relative "backend/c/c-backend.scm")
     )
 

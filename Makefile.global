@@ -38,7 +38,7 @@ _clean::
 
 %.class: %.scm
 ifdef DEV_TREE
-	$(DEV_TREE)/new-compiler/compile1 $<
+	$(DEV_TREE)/compiler/compile1 $<
 else
 	@echo 'Variable $$DEV_TREE not set.'
 	false
@@ -46,7 +46,7 @@ endif
 
 %.dll: %.scm
 ifdef DEV_TREE
-	$(DEV_TREE)/new-compiler/newmoon-mz -X $<
+	$(DEV_TREE)/compiler/newmoon-mz -X $<
 else
 	@echo 'Variable $$DEV_TREE not set.'
 	false
@@ -54,7 +54,7 @@ endif
 
 %.so: %.scm
 ifdef DEV_TREE
-	$(DEV_TREE)/new-compiler/newmoon-mz -X $<
+	$(DEV_TREE)/compiler/newmoon-mz -X $<
 else
 	@echo 'Variable $$DEV_TREE not set.'
 	false
@@ -62,7 +62,7 @@ endif
 
 %: %.scm
 ifdef DEV_TREE
-	$(DEV_TREE)/new-compiler/newmoon-mz -x $<
+	$(DEV_TREE)/compiler/newmoon-mz -x $<
 else
 	@echo 'Variable $$DEV_TREE not set.'
 	false

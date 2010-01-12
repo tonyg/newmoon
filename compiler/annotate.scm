@@ -1,121 +1,115 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Annotation of parse tree environments.
+; Annotation of ASTs with information about location, capturing and
+; mutation of variables.
 
-;; Main entry point:
-(define (annotate-tree cps-parse-tree)
-  (annotate-env '() cps-parse-tree))
+; For each reference,
+;  - compute its runtime location
+;
+; For each update,
+;  - compute its runtime location
+;
+; For each lambda,
+;  - define locations for formals, for use by recursive annotation of the body
+;  - define location mappings for captures
+;  - compute the set of global names referenced or set
 
-(define (find-capture name l)
-  (cond
-   ((null? l) #f)
-   ((eq? (node-get (node-get (car l) 'capture 'arginfo) 'arginfo 'name) name)
-    (car l))
-   (else (find-capture name (cdr l)))))
+(define-record-type rib
+  (make-rib* lambda-node scope capture-mapping global-set)
+  rib?
+  (lambda-node rib-lambda-node)
+  (scope rib-scope)
+  (capture-mapping rib-capture-mapping set-rib-capture-mapping!)
+  (global-set rib-global-set set-rib-global-set!))
 
-(define (memq-arginfo name l)
-  (cond
-   ((null? l) #f)
-   ((eq? (node-get (car l) 'arginfo 'name) name) l)
-   (else (memq-arginfo name (cdr l)))))
+(define (make-rib lambda-node)
+  (make-rib* lambda-node
+	     (let ((names-set (@cps-lambda-expr-updates lambda-node))
+		   (names-cap (expr-references* (@cps-lambda-expr lambda-node) 'child-captures))
+		   (all-formals (let ((c (@cps-lambda-cont lambda-node)))
+				  (if c
+				      (cons c (@cps-lambda-formals lambda-node))
+				      (@cps-lambda-formals lambda-node)))))
+	       (map (lambda (ai i) (cons (@arginfo-name ai)
+					 (make-node @loc-local
+						    'argument
+						    ai
+						    (if (memq (@arginfo-name ai) names-cap) #t #f)
+						    (if (memq (@arginfo-name ai) names-set) #t #f)
+						    i)))
+		    all-formals
+		    (iota (length all-formals))))
+	     '()
+	     '()))
 
-(define (find-location lambda-stack varname global-k local-k)
-  (let search-lambda-stack ((require-global-entry? #t)
-			    (lambda-stack lambda-stack)
-			    (global-k global-k)
-			    (local-k local-k))
-    (if (null? lambda-stack)
-	(global-k)
-	(let* ((lambda-node (car lambda-stack))
-	       (cont (node-get lambda-node 'cps-lambda 'cont))
-	       (formals (node-get lambda-node 'cps-lambda 'formals))
-	       (old-captures (node-get/default! lambda-node 'captures '()))
-	       (old-globals (node-get/default! lambda-node 'globals '())))
+(define (find-location name env)
+  (define (walk env)
+    (if (null? env)
+	(make-node @loc-global)
+	(let ((rib (car env)))
 	  (cond
-	   ((find-capture varname old-captures) =>
-	    ;; We've already captured a variable of this name. Return
-	    ;; the location we're storing the captured cell in (and
-	    ;; the captured arginfo).
-	    (lambda (capture-record)
-	      (local-k (node-get capture-record 'capture 'arginfo)
-		       (node-get capture-record 'capture 'new-location))))
-
-	   ((memq varname old-globals)
-	    ;; We've already checked, and none of our parents define
-	    ;; or capture this variable - we know it's a global.
-	    (global-k))
-
-	   ((and cont (eq? (node-get cont 'arginfo 'name) varname))
-	    ;; This refers to our continuation argument, which acts
-	    ;; more-or-less like a normal local.
-	    (local-k cont
-		     (make-node 'loc-continuation)))
-
-	   ((memq-arginfo varname formals) =>
-	    ;; This lambda defines this variable! Return the location
-	    ;; of the argument in this lambda's argument list, as well
-	    ;; as the arginfo structure for the argument, so that we
-	    ;; can later update it with capture/mutation information.
-	    (lambda (memq-tail)
-	      (let ((position (- (length formals)
-				 (length memq-tail))))
-		(local-k (car memq-tail)
-			 (make-node 'loc-argument 'index position)))))
-
+	   ((assq name (rib-scope rib)) => cdr)
+	   ((assq name (rib-capture-mapping rib)) =>
+	    (lambda (entry) (@capture-new-location (cdr entry))))
 	   (else
-	    ;; We don't know. Ask our lexically-enclosing scope.
-	    (search-lambda-stack #f ; we do NOT require an entry for a global here
-				 (cdr lambda-stack)
-				 (lambda ()
-				   ;; It's a global variable. Insert an entry here only
-				   ;; if we need to.
-				   (when require-global-entry?
-				     (node-set! lambda-node 'cps-lambda 'globals
-						(cons varname old-globals)))
-				   (global-k))
-				 (lambda (arginfo old-location)
-				   ;; It's a captured variable. Recapture it here.
-				   (let ((new-location (make-node 'loc-environment
-								  'index (length old-captures))))
-				     (arginfo-capture! arginfo)
-				     (node-set! lambda-node 'cps-lambda 'captures
-						(cons (make-node 'capture
-								 'arginfo arginfo
-								 'old-location old-location
-								 'new-location new-location)
-						      old-captures))
-				     (local-k arginfo new-location))))))))))
+	    (let ((loc (walk (cdr env))))
+	      (node-match loc
+		((@loc-global)
+		 loc)
+		((@loc-local arginfo captured mutable)
+		 (let* ((old-mapping (rib-capture-mapping rib))
+			(new-loc (make-node @loc-local 'environment
+					    arginfo captured mutable (length old-mapping))))
+		   (set-rib-capture-mapping! rib
+					     (cons (cons (@arginfo-name arginfo)
+							 (make-node @capture loc new-loc))
+						   old-mapping))
+		   new-loc)))))))))
+  (let ((loc (walk env)))
+    (when (node-kind? loc @loc-global)
+      (compiler-assert at-least-one-rib-present (pair? env))
+      (set-rib-global-set! (car env)
+			   (lset-adjoin eq? (rib-global-set (car env)) name)))
+    loc))
 
-(define (annotate-env lambda-stack node)
-  (node-match node
-	      ((cps-var name)
-	       (find-location lambda-stack
-			      name
-			      (lambda () (make-node 'cps-global-get
-						    'name name))
-			      (lambda (arginfo location)
-				(make-node 'cps-local-get
-					   'name name
-					   'arginfo arginfo
-					   'location location))))
-	      ((cps-set name expr)
-	       (let ((expr (annotate-env lambda-stack expr)))
-		 (find-location lambda-stack
-				name
-				(lambda () (make-node 'cps-global-set
-						      'name name
-						      'expr expr))
-				(lambda (arginfo location)
-				  (arginfo-mutate! arginfo)
-				  (make-node 'cps-local-set
-					     'name name
-					     'arginfo arginfo
-					     'location location
-					     'expr expr)))))
-	      ((cps-lambda cont formals varargs expr)
-	       (node-set! node 'cps-lambda 'expr (annotate-env (cons node lambda-stack) expr))
-	       node)
-	      (else
-	       (node-children-map! cps-child-attrs
-				   (lambda (n) (annotate-env lambda-stack n))
-				   node)
-	       node)))
+(define (annotate-root node)
+  ;; FIXME: superlinear! possibly O(n^2) or worse
+  (annotate-in-env '() (lambda (e v) (v node))))
+
+(define (annotate-in-env env callback)
+  (define (annotate-exp node)
+    (node-match node
+      ((@cps-apply cont rator rands)
+       (make-node @cps2-apply cont (annotate-value rator) (map annotate-value rands)))
+      ((@cps-exp-begin head tail)
+       (make-node @cps2-exp-begin (annotate-value head) (annotate-exp tail)))
+      ((@cps-exp-if test true false)
+       (make-node @cps2-exp-if (annotate-value test) (annotate-exp true) (annotate-exp false)))))
+
+  (define (annotate-value node)
+    (node-match node
+      ((@cps-lit value) (make-node @cps2-lit value))
+      ((@cps-void) (make-node @cps2-void))
+      ((@cps-var name) (make-node @cps2-get name (find-location name env)))
+      ((@cps-lambda cont varargs expr)
+       (let* ((rib (make-rib node))
+	      (expr2 (annotate-in-env (cons rib env)
+				      (lambda (e v) (e expr)))))
+	 (make-node @cps2-lambda
+		    (not cont) ;; no continuation-argument means we *are* a continuation
+		    (map cdr (rib-scope rib))
+		    varargs
+		    expr2
+		    (map cdr (rib-capture-mapping rib))
+		    (rib-global-set rib))))
+      ((@cps-asm formals actuals code)
+       (make-node @cps2-asm formals (map annotate-value actuals) code))
+      ((@cps-backend backend-name arguments) (make-node @cps2-backend backend-name arguments))
+      ((@cps-set name expr)
+       (make-node @cps2-set name (find-location name env) (annotate-value expr)))
+      ((@cps-value-begin head tail)
+       (make-node @cps2-value-begin (annotate-value head) (annotate-value tail)))
+      ((@cps-value-if test true false)
+       (make-node @cps2-value-if
+		  (annotate-value test) (annotate-value true) (annotate-value false)))))
+
+  (callback annotate-exp annotate-value))
