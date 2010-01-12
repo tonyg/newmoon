@@ -635,6 +635,9 @@
 
       (let ((backend-path (string-append (path->string (current-load-relative-directory))
 					 "/backend/c"))
+	    (so (case (system-type)
+		  ;; ((macosx) ".dylib")
+		  (else ".so")))
 	    (dummy-arg "-DNEWMOON_DUMMY_DEFINITION_BECAUSE_GCC_HATES_BLANK_SPACES"))
 	(when
 	    (not (call-external-program (or (getenv "NEWMOON_GCC")
@@ -659,7 +662,7 @@
 					    "-c")
 					"-o" (if (compiler$make-program)
 						 (replace-filename-extension output-filename "")
-						 (replace-filename-extension output-filename ".so"))
+						 (replace-filename-extension output-filename so))
 					output-filename
 					(if (compiler$make-program)
 					    "-lnewmoon"

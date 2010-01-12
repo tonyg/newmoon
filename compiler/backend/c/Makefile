@@ -4,10 +4,12 @@ else
 LIBTOOL=libtool
 endif
 
-all: libnewmoon.so
+SOEXT=so
+
+all: libnewmoon.$(SOEXT)
 
 clean:
-	rm -f libnewmoon.so
+	rm -f libnewmoon.$(SOEXT)
 
-libnewmoon.so: runtime.c
+libnewmoon.$(SOEXT): runtime.c
 	$(LIBTOOL) --tag=CC --mode=link gcc -g -O0 -fomit-frame-pointer -fno-pic -c -o $@ $<
