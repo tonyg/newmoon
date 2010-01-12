@@ -654,7 +654,9 @@
 					"-O3"
 					"-fomit-frame-pointer"
 					"-foptimize-sibling-calls"
-					"-fno-pic"
+					(if (compiler$make-program)
+					    dummy-arg
+					    "-dynamiclib")
 					(string-append "-I"backend-path)
 					(string-append "-L"backend-path)
 					(if (compiler$make-program)

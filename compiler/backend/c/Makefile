@@ -12,4 +12,4 @@ clean:
 	rm -f libnewmoon.$(SOEXT)
 
 libnewmoon.$(SOEXT): runtime.c
-	$(LIBTOOL) --tag=CC --mode=link gcc -g -O0 -fomit-frame-pointer -fno-pic -c -o $@ $<
+	$(LIBTOOL) --tag=CC --mode=link gcc -g -O0 -fomit-frame-pointer -dynamiclib -o $@ $<
