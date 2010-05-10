@@ -1,2 +1,5 @@
 - circular literal data is not supported.
 - partial continuations? http://citeseer.ist.psu.edu/moreau94partial.html
+
+This doesn't work, and should:
+  (do-something (a) (begin (b) (c)) (d))
