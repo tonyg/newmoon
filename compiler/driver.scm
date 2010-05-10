@@ -29,7 +29,7 @@
 		   new-datum))
 	  (sequence-phases new-datum rest)))))
 
-(define (compiler-front-end-phases expr)
+(define (compiler-front-end-phases current-back-end-name expr)
   (sequence-phases
    expr
    (list
@@ -41,4 +41,9 @@
     (list "opt(1) removing head thunks"		%ds remove-thunk-in-head-position %ds)
     (list "cps-transform"			%ds cps-transform %cps-value)
     (list "opt(2) removing noop begins"		%cps-value remove-begin-head-noops %cps-value)
-    (list "annotation"				%cps-value annotate-root %cps2-value))))
+    (list "annotation"				%cps-value annotate-root %cps2-value)
+    (list "il-generation"			%cps2-value
+						(lambda (node) (generate-il
+								current-back-end-name
+								node))
+						%il))))

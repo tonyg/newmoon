@@ -129,3 +129,40 @@
   (@cps2-apply (cont boolean?) (rator %cps2-value) (rands (%list-of %cps2-value)))
   (@cps2-exp-begin (head %cps2-value) (tail %cps2-exp))
   (@cps2-exp-if (test %cps2-value) (true %cps2-exp) (false %cps2-exp)))
+
+(define-language %il
+  (@il-program (literal-table (%list-of %any))
+	       (closure-table (%list-of @il-closure-template))
+	       (root-closure-index number?)))
+
+(define-node-type @il-closure-template
+  (is-continuation boolean?)
+  (formals (%list-of @arginfo))
+  (varargs boolean?)
+  (environment (%list-of @arginfo))
+  (globals (%set-of symbol?))
+  (instructions (%list-of %il-instruction)))
+
+(define-language %il-instruction
+  (@il-lit (index number?))
+  (@il-void)
+  (@il-closure (index number?) (capture-exprs (%list-of %il-instruction)))
+  (@il-asm (formals (%list-of symbol?)) (actuals (%list-of %il-instruction)) (code %any))
+  (@il-backend (arguments (%list-of %any)))
+
+  (@il-install-box (name symbol?) (index number?))
+
+  (@il-load-argument (name symbol?) (index number?))
+  (@il-load-environment (name symbol?) (index number?))
+  (@il-load-box (expr %il-instruction))
+  (@il-load-global (name symbol?))
+
+  (@il-store-argument (name symbol?) (index number?) (expr %il-instruction))
+  (@il-store-environment (name symbol?) (index number?) (expr %il-instruction))
+  (@il-store-box (location-expr %il-instruction) (value-expr %il-instruction))
+  (@il-store-global (name symbol?) (expr %il-instruction))
+
+  (@il-apply (cont boolean?) (rator %il-instruction) (rands (%list-of %il-instruction)))
+  (@il-begin (head %il-instruction) (tail %il-instruction))
+
+  (@il-if (test %il-instruction) (true %il-instruction) (false %il-instruction)))

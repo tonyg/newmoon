@@ -277,6 +277,8 @@
 		     '(#\")
 		     (string->list str)))))
 
+(define compiler-back-end-name 'c)
+
 (define (compiler-back-end-phases input-filename frontend-result)
   (let* ((next-lambda-name (make-counter (lambda (c) (string-append "Fn" (number->string c)))))
 	 (next-envdef-name (make-counter (lambda (c) (string-append "Env" (number->string c)))))

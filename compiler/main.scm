@@ -25,6 +25,7 @@
 (include "cps.scm")
 (include "optimize.scm")
 (include "annotate.scm")
+(include "ilgen.scm")
 (include "coreeval.scm")
 
 (include "driver.scm")
@@ -68,7 +69,8 @@
 	    (set! basic-visited #t)))
 	(parameterize ((compiler$visit-time '()))
 	  (compiler-back-end-phases filename
-				    (compiler-front-end-phases `(begin ,@exprs)))
+				    (compiler-front-end-phases compiler-back-end-name
+							       `(begin ,@exprs)))
 	  (display ";; compile-file finished  ") (display filename) (newline))))))
 
 (define (visit-libraries libspecs)
@@ -82,4 +84,5 @@
   ;; Not finished/working yet
   (parameterize ((compiler$make-program #f))
     (compiler-back-end-phases "IMMEDIATEcompileexpr"
-			      (compiler-front-end-phases expr))))
+			      (compiler-front-end-phases compiler-back-end-name
+							 expr))))
