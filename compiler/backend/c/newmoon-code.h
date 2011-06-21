@@ -129,7 +129,7 @@ typedef enum {
 #define mkpair(a, d) { MAKE_GC_INFO(TYPE_PAIR, 2, 1), a, d }
 #define deftemp(varname, e) oop varname = e
 #define addressof(x) ((oop) &(x))
-#define initglobal(v, name) global__ ## v = lookup_global(name);
+#define initglobal(v, name) global__ ## v = lookup_global(name, strlen(name));
 #define mknull() TAG(0, TAG_SPECIAL)
 #define mkvoid() TAG(1, TAG_SPECIAL)
 #define mktrue() TAG(2, TAG_SPECIAL)
@@ -225,9 +225,8 @@ typedef enum {
 
 extern oop apply_oop;
 extern oop scheme_current_output_port;
-extern box *lookup_global(char const *name);
-extern oop intern(char const *str);
-extern oop intern_any(oop x);
+extern box *lookup_global(char const *name, size_t len);
+extern oop intern(char const *str, size_t len);
 extern oop gensym(char const *prefix);
 extern void newmoontrace(char const *assemblyname, char const *functionname);
 extern void __attribute__((noreturn)) wrong_type(int arg_index);

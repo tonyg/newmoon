@@ -489,7 +489,7 @@
 
 (define (string->symbol x)
   (%assemble (x) (x)
-    (c "return(intern(safe_c_string("x")));")
+    (c "return(intern(safe_c_string("x"),oop_len("x")));")
     (dotnet ($ x)
 	    (castclass "class [Newmoon]Newmoon.SchemeString")
 	    (call "instance string [Newmoon]Newmoon.SchemeString::ToString()"))))

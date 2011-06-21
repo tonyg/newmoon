@@ -1,9 +1,11 @@
 #include "newmoon-code.h"
 
+#include <stdio.h>
 #include <stdarg.h>
 
 oop defineGlobal(oop name, oop kind, oop value) {
-  box *b = lookup_global(((binary *) symbol_name(name))->data);
+  binary *s = (binary *) symbol_name(name);
+  box *b = lookup_global(s->data, oop_len(s));
   b->value = value;
   return b;
 }

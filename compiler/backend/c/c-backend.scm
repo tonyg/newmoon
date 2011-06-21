@@ -335,7 +335,8 @@
 
     (define (gen-literal-initialiser fn value)
       (cond
-       ((symbol? value) `(intern ,(escape-string (symbol->string value))))
+       ((symbol? value) `(intern ,(escape-string (symbol->string value))
+				 ,(string-length (symbol->string value))))
        ((string? value)
 	(let ((name (next-temp)))
 	  (add-instr! fn `(defbinary ,name ,(string-length value) ,(escape-string value)))

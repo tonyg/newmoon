@@ -90,12 +90,10 @@ oop symbol_name(oop sym) {
 
 oop gensym(char const *prefix) {
   static int counter = 14641;
-  char *buf = malloc(strlen(prefix) + 20);
+  char *buf = alloca(strlen(prefix) + 20);
   oop result;
   sprintf(buf, "%s%d", prefix, counter++);
-  result = intern(buf);
-  free(buf);
-  return result;
+  return intern(buf, strlen(buf));
 }
 
 static void init_gc(void) {
@@ -165,8 +163,8 @@ void __attribute__((noreturn)) gc_stack_collector(void *f, ...) {
   exit(11);
 }
 
-box *lookup_global(char const *name) {
-  oop namesym = intern(name);
+box *lookup_global(char const *name, size_t len) {
+  oop namesym = intern(name, len);
   pair *p = (pair *) globals;
 
   while (p != mknull()) {
@@ -179,7 +177,7 @@ box *lookup_global(char const *name) {
 
   {
     box *entry_box = raw_box(mkvoid());
-    globals = raw_cons(raw_cons(intern(name), entry_box), globals);
+    globals = raw_cons(raw_cons(namesym, entry_box), globals);
     return entry_box;
   }
 }
@@ -205,8 +203,7 @@ static uint32_t fnv_hash(void const *data, size_t length) {
   return h;
 }
 
-oop intern(char const *str) {
-  size_t len = strlen(str);
+oop intern(char const *str, size_t len) {
   size_t current_table_width = oop_len(symtab);
   uint32_t probe = fnv_hash(str, len) % current_table_width;
 
