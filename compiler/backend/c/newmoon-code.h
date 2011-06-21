@@ -195,9 +195,7 @@ typedef enum {
 	{								\
 	  pair *p = alloca(sizeof(pair));				\
 	  oop a = va_arg(the_va_list, oop);				\
-	  p->header.gc_info = MAKE_GC_INFO(TYPE_PAIR, 2, 1);		\
-	  p->car = a;							\
-	  p->cdr = mknull();						\
+	  *p = (pair) mkpair(a, mknull());				\
 	  if (prev == NULL) {						\
 	    varname = p;						\
 	  } else {							\
