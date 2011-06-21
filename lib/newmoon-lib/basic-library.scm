@@ -184,6 +184,10 @@
 	 (invoke "sisc.data.Quantity" "comp" boolean ("sisc.data.Quantity" int) virtual)
 	 (invoke "sisc.util.Util" "truth" "sisc.data.SchemeBoolean" (boolean) static))))
 
+(define (< x y)
+  (%assemble (x y) (x y)
+    (c "return(scheme_boolean(numeric_lt("x", "y")))")))
+
 (define (> x y)
   (%assemble (x y) (x y)
     (c "return(scheme_boolean(numeric_gt("x", "y")))")
@@ -500,6 +504,18 @@
     (dotnet ($ x)
 	    (castclass "string")
 	    (newobj "instance void class [Newmoon]Newmoon.SchemeString::.ctor(string)"))))
+
+(define (%%make-vector n)
+  (%assemble (n) (n)
+    (c "return(mkvec(DETAG("n")));")))
+
+(define (vector . args)
+  (let* ((n (length args))
+	 (v (%%make-vector n)))
+    (do ((i 0 (+ i 1))
+	 (args args (cdr args)))
+	((= i n) v)
+      (vector-set! v i (car args)))))
 
 (define (vector->list x)
   (%assemble (x) (x)

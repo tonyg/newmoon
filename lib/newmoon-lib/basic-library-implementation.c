@@ -116,6 +116,10 @@ oop numeric_equality(oop a, oop b) {
   return scheme_boolean(DETAG(a) == DETAG(b));
 }
 
+oop numeric_lt(oop a, oop b) {
+  return scheme_boolean(DETAG(a) < DETAG(b));
+}
+
 oop numeric_gt(oop a, oop b) {
   return scheme_boolean(DETAG(a) > DETAG(b));
 }
