@@ -50,7 +50,7 @@
       ((@cps-lit) '())
       ((@cps-void) '())
       ((@cps-var name) (case mode
-			 ((child-captures) '())
+			 ((child-captures) (list name))
 			 ((updates) '())
 			 ((references) (list name))))
       ((@cps-lambda formals expr expr-references expr-updates)
