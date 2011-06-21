@@ -34,7 +34,7 @@ static vector *symtab;
 static oop globals = mknull();
 
 void newmoontrace(char const *assemblyname, char const *functionname) {
-  fprintf(stderr, "%s::%s\n", assemblyname, functionname);
+  //fprintf(stderr, "%s::%s\n", assemblyname, functionname);
 }
 
 void __attribute__((noreturn)) wrong_type(int arg_index) {
@@ -185,7 +185,6 @@ box *lookup_global(char const *name, size_t len) {
 oop vector_to_list(oop v) {
   int i;
   oop result = mknull();
-  fprintf(stderr, "vector_to_list %p\n", v);
   if (!isvector(v)) die("vector_to_list: not a vector");
   for (i = oop_len(v) - 1; i >= 0; i--) {
     result = raw_cons(((vector *) v)->data[i], result);
@@ -247,7 +246,9 @@ oop scheme_display(oop x, oop p) {
     scheme_display(((pair *) x)->cdr, p);
     printf(")");
   } else if (issymbol(x)) {
-    printf("%s", ((binary *) symbol_name(x))->data);
+    printf("%.*s",
+	   oop_len(symbol_name(x)),
+	   ((binary *) symbol_name(x))->data);
   } else if (isbinary(x)) {
     printf("%s", ((binary *) x)->data);
   } else if (isvector(x)) {
@@ -308,7 +309,7 @@ static void push_bootmod_def(char const *name, initGlobals_fn ig, startup_fn s) 
 static int load_module_internal(char const *name, struct bootmod *bm) {
   void *h, *ig, *s;
 
-  fprintf(stderr, "Opening boot module module %s...\n", name);
+  fprintf(stderr, "Opening boot module %s...\n", name);
   h = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
   if (h == NULL) {
     fprintf(stderr, "%s\n", dlerror());
