@@ -136,12 +136,15 @@ typedef enum {
 #define mkfalse() TAG(3, TAG_SPECIAL)
 #define mkchar(x) TAG(x, TAG_CHAR)
 #define litint(i) TAG(i, TAG_INT)
-#define mkveclike(typetag, size) ({				\
-      int len = (size);						\
-      vector *v = alloca(sizeof(vector) + len * sizeof(oop));	\
-      init_object_header(v->header, typetag, len);		\
-      memset(&v->data[0], 0, len * sizeof(oop));		\
-      (oop) v; 							\
+#define mkveclike(typetag, size) ({					\
+      intptr_t len = (intptr_t) (size);					\
+      vector *v = alloca(sizeof(vector) + len * sizeof(oop));		\
+      int vi;								\
+      init_object_header(v->header, typetag, len);			\
+      for (vi = 0; vi < len; vi++) {					\
+	v->data[vi] = mkvoid();						\
+      }									\
+      (oop) v;								\
     })
 #define mkrec(size) mkveclike(TYPE_RECORD, size)
 #define mkvec(size) mkveclike(TYPE_VECTOR, size)
