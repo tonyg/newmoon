@@ -1,1 +1,3 @@
 compiler/backend/c/libnewmoon.so
+*.so
+*.dSYM

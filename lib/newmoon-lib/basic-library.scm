@@ -8,7 +8,8 @@
  ((lambda ()
     (define (definer name kind value)
       (%assemble (name kind value result) (name kind value 'dummy)
-	(c "defineGlobal("name", "kind", "value");")
+	(c "extern oop defineGlobal(oop, oop, oop);"
+	   "defineGlobal("name", "kind", "value");")
 	(scheme ($define-global-variable name value))
 	(dotnet (ldarg.0)
 		(ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
@@ -201,7 +202,8 @@
 
 (define (+ x y)
   (%assemble (x y) (x y)
-    (c "return(scheme_boolean(numeric_plus("x", "y")))")
+    (c "extern oop numeric_plus(oop, oop);"
+       "return(numeric_plus("x", "y"))")
     (scheme (+ x y))
     (dotnet ($ x)
 	    ($ y)
@@ -214,7 +216,8 @@
 
 (define (- x y)
   (%assemble (x y) (x y)
-    (c "return(scheme_boolean(numeric_minus("x", "y")))")
+    (c "extern oop numeric_minus(oop, oop);"
+       "return(numeric_minus("x", "y"))")
     (scheme (- x y))
     (dotnet ($ x)
 	    ($ y)
@@ -484,12 +487,6 @@
 	(u)
 	(apply values results)))))
 
-(define (->symbol x)
-  (%assemble (x) (x)
-    (c "return(intern_any("x"));")
-    (dotnet ($ x)
-	    (callvirt "instance string [mscorlib]System.Object::ToString()"))))
-
 (define (string->symbol x)
   (%assemble (x) (x)
     (c "return(intern(safe_c_string("x")));")
@@ -512,15 +509,16 @@
 	    (call "class [Newmoon]Newmoon.List class [Newmoon]Newmoon.List::FromVector(object[])"))))
 
 (define (string-split s charstr)
-  (map1 symbol->string
-	(vector->list
-	 (%assemble (sym charstr) ((string->symbol s) charstr)
-	   (c "return(string_split_by_chars("sym", "charstr"));")
-	   (dotnet ($ sym)
-		   ($ charstr)
-		   (castclass "class [Newmoon]Newmoon.SchemeString")
-		   (call "instance char[] [Newmoon]Newmoon.SchemeString::GetCharArray()")
-		   (call "instance string[] [mscorlib]System.String::Split(char[])"))))))
+  (%assemble (s charstr) (s charstr)
+    (c "extern oop string_split_by_chars(oop, oop);"
+       "return(string_split_by_chars("s", "charstr"));")
+    (dotnet ;; May need updating because now we're passing in strings instead of symbols
+     ;; Also we need to return a list rather than a vector now
+     ($ s) ;; this used to be a symbol
+     ($ charstr)
+     (castclass "class [Newmoon]Newmoon.SchemeString")
+     (call "instance char[] [Newmoon]Newmoon.SchemeString::GetCharArray()")
+     (call "instance string[] [mscorlib]System.String::Split(char[])"))))
 
 (define (getenv name)
   (%assemble (name f) (name #f)
@@ -545,7 +543,7 @@
 
 (define (%%load-void)
   (%assemble () ()
-    (c "return(NULL);")
+    (c "return(mkvoid());")
     (dotnet (ldnull))))
 
 (define (void-guard v g)
@@ -667,7 +665,8 @@
 
 (define (string-join strs sepstr)
   (%assemble (strs sepstr) (strs sepstr)
-    (c "return(string_join("strs", "sepstr"));")
+    (c "extern oop string_join(oop, oop);"
+       "return(string_join("strs", "sepstr"));")
     (dotnet ($ strs)
 	    (castclass "class [Newmoon]Newmoon.List")
 	    ($ sepstr)
@@ -724,30 +723,16 @@
 		f
 		(loop rest)))))))
 
-(define (%%invoke-module s)
-  (%assemble (s) (s)
-    (c "die(\"%%invoke-module unimplemented\");")
-    (dotnet (ldarg.0)
-	    (ldfld "class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Closure::module")
-	    (call "instance class [Newmoon]Newmoon.Environment [Newmoon]Newmoon.Module::get_Env()")
-	    ($ s)
-	    (castclass "string")
-	    (call "instance class [Newmoon]Newmoon.Module [Newmoon]Newmoon.Environment::InvokeModule(string)"))))
-
-(define (%%get-entry-point m)
+(define (%%load-module m)
   (%assemble (m) (m)
-    (c "die(\"%%get-entry-point unimplemented\");")
-    (dotnet ($ m)e
-	    (castclass "class [Newmoon]Newmoon.Module")
-	    (callvirt "instance class [Newmoon]Newmoon.Closure class [Newmoon]Newmoon.Module::GetEntryPoint()"))))
+    (c "extern oop basic_library_load_module(oop);"
+       "return(basic_library_load_module("m"));")))
 
 (define (require-libraries libspecs)
   (for-each1 (lambda (libspec)
 	       (case (car libspec)
-		 ((lib) (let ((module (%%invoke-module (string->symbol
-							(resolve-library-path (cadr libspec)
-									      (cddr libspec))))))
-			  ((%%get-entry-point module))))
+		 ((lib) ((%%load-module (resolve-library-path (cadr libspec)
+							      (cddr libspec)))))
 		 (else (error "Bad libspec" libspec))))
 	     libspecs))
 

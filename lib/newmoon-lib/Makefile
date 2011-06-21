@@ -2,5 +2,8 @@ TARGETS = basic-library.$(SCMOEXT) r5rs-misc.$(SCMOEXT) r5rs-ports.$(SCMOEXT) r5
 
 include ../../Makefile.global
 
-basic-library.$(SCMOEXT): basic-library.scm
-	(cd ../../compiler; ./newmoon-mz -b -N "basic-library" -X ../lib/newmoon-lib/basic-library.scm)
+basic-library.$(SCMOEXT): basic-library.scm basic-library-implementation.c
+	(cd ../../compiler; \
+	 ./newmoon-mz -b -N "basic-library" -X \
+		-L ../lib/newmoon-lib/basic-library-implementation.c \
+		../lib/newmoon-lib/basic-library.scm)

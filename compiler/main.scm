@@ -34,6 +34,7 @@
 (define compiler$without-basic-libraries (make-parameter #f))
 (define compiler$make-program (make-parameter #f))
 (define compiler$target-namespace (make-parameter #f))
+(define compiler$extra-backend-args (make-parameter '()))
 
 (define (debug-mode=? mode)
   ;; Really, main$debug should be a set of symbols, to allow more than

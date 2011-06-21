@@ -31,6 +31,8 @@
 	  ((#\i) (set! interactive #t) rest)
 	  ((#\e) (set! mode 'evaluating) rest)
 	  ((#\N) (compiler$target-namespace (car rest)) (cdr rest))
+	  ((#\L) (compiler$extra-backend-args (cons (car rest) (compiler$extra-backend-args)))
+	         (cdr rest))
 	  (else
 	   (error "Unknown command-line switch" arg)))))
 

@@ -317,7 +317,11 @@
       (set! all-literal-c-stanzas (cons lines all-literal-c-stanzas)))
 
     (define (new-function! name modifiers rettype is-variadic formals)
-      (record-function! (make-functiondef name modifiers rettype is-variadic formals)))
+      (let ((fd (make-functiondef name modifiers rettype is-variadic formals)))
+	(record-function! fd)
+	(add-instr! fd `(newmoontrace ,(escape-string assembly-name)
+				      ,(escape-string name)))
+	fd))
 
     (define (temp fn instr)
       (let ((name (next-temp)))
@@ -362,6 +366,7 @@
 	     (expr (@cps2-lambda-expr node))
 	     (arity (let ((fl (length formals))) (if varargs (- fl 1) fl)))
 	     (lambdaname (next-lambda-name))
+	     (varlambdaname (next-lambda-name))
 	     (envdefname (next-envdef-name))
 	     (newcloname (next-temp))
 	     (capture-map (capture-fields captures)))
@@ -400,15 +405,45 @@
 				   varargs
 				   `(("self" (* ,envdefname))
 				     ("argc" "int")
-				     ,@(formals->argdefs formals)))))
-	  (when varargs
-	    (let ((rest-arginfo (car (filter @arginfo-is-rest
-					     (map @loc-local-arginfo formals))))
-		  (penultimate-vardef (last (@functiondef-formals code))))
-	      (add-instrs! code `((deftemp ,(arginfo->id rest-arginfo) (mknull))
-				  (extractvarargs ,(arginfo->id rest-arginfo)
-						  ,arity
-						  ,(@vardef-name penultimate-vardef))))))
+				     ,@(formals->argdefs formals))))
+	      (first-vardef-name (arginfo->id (@loc-local-arginfo (car formals))))
+	      (varlambdacode (new-function! varlambdaname
+					    `("static" ,*noreturn*)
+					    "void"
+					    #f
+					    `(("self" (* ,envdefname))
+					      ("actuals" "oop")))))
+	  (add-instrs! varlambdacode
+		       (map (lambda (loc) `(deftemp ,(arginfo->id (@loc-local-arginfo loc)) NULL))
+			    formals))
+	  (add-instr! varlambdacode `(deftemp original_actuals actuals))
+	  (add-instrs! varlambdacode
+		       (map (lambda (loc)
+			      (let ((ai (@loc-local-arginfo loc)))
+				`(,(if (@arginfo-is-rest ai)
+				       'extractrestactual
+				       'extractsingleactual)
+				  ,(if varargs
+				       'wrong_variable_argc_apply
+				       'wrong_fixed_argc_apply)
+				  ,arity
+				  ,(arginfo->id ai))))
+			    formals))
+	  (add-instr! varlambdacode `(,lambdaname self -2
+						  ,@(map (lambda (loc)
+							   (arginfo->id (@loc-local-arginfo loc)))
+							 formals)))
+	  (if varargs
+	      (let ((rest-arginfo (car (filter @arginfo-is-rest
+					       (map @loc-local-arginfo formals))))
+		    (penultimate-vardef (last (@functiondef-formals code))))
+		(add-instrs! code `((deftemp ,(arginfo->id rest-arginfo) (mknull))
+				    (extractvarargs ,(arginfo->id rest-arginfo)
+						    ,arity
+						    ,first-vardef-name
+						    ,varlambdaname
+						    ,(@vardef-name penultimate-vardef)))))
+	      (add-instr! code `(checkfixedarity ,arity ,first-vardef-name ,varlambdaname)))
 	  (for-each (lambda (loc)
 		      (when (@loc-local-boxed? loc)
 			(add-instr! code `(installbox
@@ -611,8 +646,11 @@
 			(emit o "defliteral("literalname");\n")))
 		    literal-table)
 	  (emit o "\n")
-	  (let ((literal-initialiser (new-function! "Startup" `() "void" #f
-						    `(("k" "continuation")))))
+	  (let ((literal-initialiser (new-function! "Startup" `(,*noreturn*)
+						    "void" #f
+						    `(("self" "oop")
+						      ("argc" "int")
+						      ("k" "continuation")))))
 	    (for-each (lambda (entry)
 			(let ((literalname (cadr entry))
 			      (literalvalue (caddr entry)))
@@ -639,36 +677,32 @@
 		  ;; ((macosx) ".dylib")
 		  (else ".so")))
 	    (dummy-arg "-DNEWMOON_DUMMY_DEFINITION_BECAUSE_GCC_HATES_BLANK_SPACES"))
-	(when
-	    (not (call-external-program (or (getenv "NEWMOON_GCC")
-					    (find-executable-path "glibtool")
-					    (find-executable-path "libtool")
-					    (error (string-append
-						    "The environment variable NEWMOON_GCC"
-						    " is not set, and neither 'glibtool'"
-						    " nor 'libtool' was found on the $PATH.")))
-					"--tag=CC"
-					"--mode=link"
-					"gcc"
-					"-g"
-					"-O3"
-					"-fomit-frame-pointer"
-					"-foptimize-sibling-calls"
-					(if (compiler$make-program)
-					    dummy-arg
-					    "-dynamiclib")
-					(string-append "-I"backend-path)
-					(string-append "-L"backend-path)
-					(if (compiler$make-program)
-					    dummy-arg
-					    "-c")
-					"-o" (if (compiler$make-program)
-						 (replace-filename-extension output-filename "")
-						 (replace-filename-extension output-filename so))
-					output-filename
-					(if (compiler$make-program)
-					    "-lnewmoon"
-					    dummy-arg)
-					))
+	(when (not (apply call-external-program
+			  (or (getenv "NEWMOON_GCC")
+			      (find-executable-path "glibtool")
+			      (find-executable-path "libtool")
+			      (error (string-append
+				      "The environment variable NEWMOON_GCC"
+				      " is not set, and neither 'glibtool'"
+				      " nor 'libtool' was found on the $PATH.")))
+			  "--tag=CC"
+			  "--mode=link"
+			  "gcc"
+			  "-g"
+			  "-O0"
+			  "-fomit-frame-pointer"
+			  "-foptimize-sibling-calls"
+			  (if (compiler$make-program)
+			      dummy-arg
+			      "-dynamiclib")
+			  (string-append "-I"backend-path)
+			  (string-append "-L"backend-path)
+			  "-o" (if (compiler$make-program)
+				   (replace-filename-extension output-filename "")
+				   (replace-filename-extension output-filename so))
+			  output-filename
+			  "-lnewmoon"
+			  (compiler$extra-backend-args)
+			  ))
 	  (error "Call to external compiler failed - is $NEWMOON_GCC correct?"))
 	))))
