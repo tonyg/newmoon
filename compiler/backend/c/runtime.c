@@ -34,32 +34,40 @@ static vector *symtab;
 static oop globals = mknull();
 
 void newmoontrace(char const *assemblyname, char const *functionname) {
-  //fprintf(stderr, "%s::%s\n", assemblyname, functionname);
+#if 0
+  fflush(NULL);
+  fprintf(stderr, "%s::%s\n", assemblyname, functionname);
+#endif
 }
 
 void __attribute__((noreturn)) wrong_type(int arg_index) {
+  fflush(NULL);
   fprintf(stderr, "Wrong argument type in index %d\n", arg_index);
   exit(1);
 }
 
 void __attribute__((noreturn)) wrong_fixed_argc(int argc, int arity) {
+  fflush(NULL);
   fprintf(stderr, "Expected exactly %d arguments, got %d\n", arity, argc);
   exit(1);
 }
 
 void __attribute__((noreturn)) wrong_variable_argc(int argc, int arity) {
+  fflush(NULL);
   fprintf(stderr, "Expected at least %d arguments, got %d\n", arity, argc);
   exit(1);
 }
 
 void __attribute__((noreturn)) wrong_fixed_argc_apply(oop args, int arity) {
   /* TODO: print args */
+  fflush(NULL);
   fprintf(stderr, "Expected exactly %d arguments\n", arity);
   exit(1);
 }
 
 void __attribute__((noreturn)) wrong_variable_argc_apply(oop args, int arity) {
   /* TODO: print args */
+  fflush(NULL);
   fprintf(stderr, "Expected at least %d arguments\n", arity);
   exit(1);
 }
@@ -69,6 +77,7 @@ void __attribute__((noreturn)) bad_index(void) {
 }
 
 void __attribute__((noreturn)) die(char const *message) {
+  fflush(NULL);
   fprintf(stderr, "FATAL: %s\n", message);
   exit(1);
 }
@@ -170,6 +179,8 @@ static box *raw_box(oop v) {
 }
 
 void __attribute__((noreturn)) gc_stack_collector(void *f, ...) {
+  fflush(NULL);
+  fprintf(stderr, "gc_stack_collector unimplemented\n");
   exit(11);
 }
 
@@ -257,7 +268,7 @@ oop scheme_display(oop x, oop p) {
     printf(")");
   } else if (issymbol(x)) {
     printf("%.*s",
-	   oop_len(symbol_name(x)),
+	   (int) oop_len(symbol_name(x)),
 	   ((binary *) symbol_name(x))->data);
   } else if (isbinary(x)) {
     printf("%s", ((binary *) x)->data);
@@ -308,6 +319,7 @@ static struct bootmod {
 
 static void push_bootmod_def(char const *name, initGlobals_fn ig, startup_fn s) {
   struct bootmod *bm = malloc(sizeof(struct bootmod));
+  fflush(NULL);
   fprintf(stderr, "Adding boot module definition %s with %p/%p\n", name, ig, s);
   bm->next = bootmods;
   bm->name = name;
@@ -319,6 +331,7 @@ static void push_bootmod_def(char const *name, initGlobals_fn ig, startup_fn s) 
 static int load_module_internal(char const *name, struct bootmod *bm) {
   void *h, *ig, *s;
 
+  fflush(NULL);
   fprintf(stderr, "Opening boot module %s...\n", name);
   h = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
   if (h == NULL) {
@@ -393,6 +406,7 @@ static __attribute__((noreturn)) void toplevel_k(constant_closure_env *self,
     struct bootmod *bm = bootmods;
     startup_fn startup = bm->startup;
     bootmods = bm->next;
+    fflush(NULL);
     fprintf(stderr, "Booting module %s...\n", bm->name);
     free(bm);
     startup(NULL, 1, self);
@@ -415,6 +429,7 @@ int newmoon_main(int argc,
   {
     struct bootmod *bm = bootmods;
     while (bm != NULL) {
+      fflush(NULL);
       fprintf(stderr, "Initialising globals for %s\n", bm->name);
       bm->initGlobals();
       bm = bm->next;
