@@ -83,6 +83,16 @@ void __attribute__((noreturn)) scheme_posix_error(char const *message, int posix
   exit(1);
 }
 
+void __attribute__((noreturn)) call_to_non_procedure(oop receiver, int argc, ...) {
+  fflush(NULL);
+  fprintf(stderr, "Call to non-procedure (argc == %d)\n", argc);
+  printf("Receiver: ");
+  scheme_display(receiver, NULL);
+  printf("\n");
+  fflush(NULL);
+  exit(1);
+}
+
 oop symbol_name(oop sym) {
   if (!issymbol(sym)) die("symbol_name: not a symbol");
   return ((symbol *) sym)->name;

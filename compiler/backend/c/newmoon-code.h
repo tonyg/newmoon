@@ -72,6 +72,7 @@ typedef struct {
 #define isrecord(x)	is_oop_of_type(x, TYPE_RECORD)
 #define isbinary(x)	is_oop_of_type(x, TYPE_BINARY)
 #define issymbol(x)	is_oop_of_type(x, TYPE_SYMBOL)
+#define isclosure(x)	is_oop_of_type(x, TYPE_CLOSURE)
 
 #define isnil(x)	((x) == mknull())
 
@@ -100,9 +101,12 @@ typedef enum {
 #define globalget(n) (global__ ## n->value)
 #define globalset(n,v) (global__ ## n->value = (v))
 #define stackcheckdispatch(f) ({ oop top_; (&top_ < gc_limit) ? gc_stack_collector : (f);})
-#define checkedcallfun(f, arity, ...) \
-             (stackcheckdispatch(((closure *) (f))->code)(f, arity, __VA_ARGS__))
-#define callfun(f, arity, ...) ((((closure *) (f))->code)(f, arity, __VA_ARGS__))
+#define closurecode(f)							\
+  (isclosure(f) ? ((closure *) (f))->code : (newmoon_code) call_to_non_procedure)
+#define checkedcallfun(f, arity, ...)				\
+  (stackcheckdispatch(closurecode(f))(f, arity, __VA_ARGS__))
+#define callfun(f, arity, ...)			\
+  (closurecode(f)(f, arity, __VA_ARGS__))
 #define directcall(fn, fv, arity, ...) fn(fv, arity, __VA_ARGS__)
 #define envref(e, member) ((e)->member)
 #define allocenv(env_ty, length, codeptr, varname)	\
@@ -239,6 +243,7 @@ extern void __attribute__((noreturn)) wrong_variable_argc_apply(oop args, int ar
 extern void __attribute__((noreturn)) die(char const *message);
 extern void __attribute__((noreturn)) scheme_error(char const *message);
 extern void __attribute__((noreturn)) scheme_posix_error(char const *message, int posix_errno);
+extern void __attribute__((noreturn)) call_to_non_procedure(oop receiver, int argc, ...);
 extern void *raw_alloc(size_t size_bytes);
 extern pair *raw_cons(oop a, oop d);
 extern oop symbol_name(oop s);
