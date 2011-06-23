@@ -6,7 +6,7 @@
 oop defineGlobal(oop name, oop kind, oop value) {
   binary *s = (binary *) symbol_name(name);
   box *b = lookup_global(s->data, oop_len(s));
-  b->value = value;
+  setbox(b, value);
   return b;
 }
 

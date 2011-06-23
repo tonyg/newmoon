@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <alloca.h>
+#include <stdint.h>
 
 typedef void *oop;
 typedef oop continuation;
@@ -14,6 +15,7 @@ typedef void __attribute__((noreturn)) (*newmoon_code)(void *, ...);
 typedef struct {
   object_header header;
   newmoon_code code;
+  oop environment[0];
 } closure;
 
 typedef closure constant_closure_env;
@@ -60,8 +62,15 @@ typedef struct {
 
 #define MAKE_GC_INFO(type, length, flag) TAG(((length) << 8) | ((type) & 255), flag)
 
-#define init_object_header(h, type, length) h.gc_info = MAKE_GC_INFO(type, length, 1)
-#define init_binary_header(h, type, length) h.gc_info = MAKE_GC_INFO(type, length, 2)
+typedef enum {
+  FLAG_FORWARDING = 0, /* used to indicate a copied pointer during GC */
+  FLAG_BINARY = 1,     /* a simple binary value */
+  FLAG_ORDINARY = 2,   /* an ordinary oop-based object (closures are special!) */
+  FLAG_MUTATED = 3,    /* an oop-based object that has been through the write barrier */
+} gc_info_flag;
+
+#define init_object_header(h, type, length) h.gc_info = MAKE_GC_INFO(type, length, FLAG_ORDINARY)
+#define init_binary_header(h, type, length) h.gc_info = MAKE_GC_INFO(type, length, FLAG_BINARY)
 
 #define oop_len(h)	(DETAG(((object_header *)(h))->gc_info) >> 8)
 #define oop_type(h)	(DETAG(((object_header *)(h))->gc_info) & 255)
@@ -99,8 +108,19 @@ typedef enum {
 #define defliteral(n) static oop n = NULL
 #define globalbox(n) (global__ ## n)
 #define globalget(n) (global__ ## n->value)
-#define globalset(n,v) (global__ ## n->value = (v))
-#define stackcheckdispatch(f) ({ oop top_; (&top_ < gc_limit) ? gc_stack_collector : (f);})
+#define globalset(n,v) setbox(global__ ## n, v)
+#define stackcheckdispatch(f)			\
+  ({						\
+    oop top_;					\
+    (&top_ < gc_nursery_limit)			\
+      ? (newmoon_code) gc_stack_collector	\
+      : (f);					\
+  })
+#define writebarrier(p)							\
+  ({									\
+    if (((uint8_t *) (p) >= heapbase) && ((uint8_t *) (p) < heapptr))	\
+      add_to_write_barrier(p);						\
+  })
 #define closurecode(f)							\
   (isclosure(f) ? ((closure *) (f))->code : (newmoon_code) call_to_non_procedure)
 #define checkedcallfun(f, arity, ...)				\
@@ -121,7 +141,8 @@ typedef enum {
   init_object_header(box__ ## var.header, TYPE_BOX, 1);	\
   box__ ## var.value = var;				\
   var = (oop) &box__ ## var;
-#define setbox(var, val) (((box *) (var))->value = (val))
+#define setbox(var, val) \
+  ({ box *box_ = ((box *) (var)); writebarrier(box_); box_->value = (val); })
 #define getbox(var) (((box *) (var))->value)
 #define settemp(var, val) var = val
 #define conditional(test, t, f)				\
@@ -130,7 +151,7 @@ typedef enum {
 #define deflabel(l) conditional__ ## l:
 #define emptystmt()
 #define defstorage(varname, type, initialiser) type varname = initialiser
-#define mkpair(a, d) { MAKE_GC_INFO(TYPE_PAIR, 2, 1), a, d }
+#define mkpair(a, d) { MAKE_GC_INFO(TYPE_PAIR, 2, FLAG_ORDINARY), a, d }
 #define deftemp(varname, e) oop varname = e
 #define addressof(x) ((oop) &(x))
 #define initglobal(v, name) global__ ## v = lookup_global(name, strlen(name));
@@ -246,6 +267,7 @@ extern void __attribute__((noreturn)) scheme_posix_error(char const *message, in
 extern void __attribute__((noreturn)) call_to_non_procedure(oop receiver, int argc, ...);
 extern void *raw_alloc(size_t size_bytes);
 extern pair *raw_cons(oop a, oop d);
+extern void add_to_write_barrier(oop p);
 extern oop symbol_name(oop s);
 extern oop vector_to_list(oop v);
 #define scheme_current_output_port mknull()
@@ -258,8 +280,11 @@ extern int newmoon_main(int argc,
 			__attribute__((noreturn)) void (*startup)(oop,int,continuation));
 extern void registerroots(int root_count, ...);
 
-extern oop *gc_limit;
-extern void __attribute__((noreturn)) gc_stack_collector(void *, ...);
+extern uint8_t *heapbase;
+extern uint8_t *heapptr;
+extern oop *gc_nursery_base;
+extern oop *gc_nursery_limit;
+extern void __attribute__((noreturn)) gc_stack_collector(oop receiver, int argc, ...);
 
 /*
   Calling convention:

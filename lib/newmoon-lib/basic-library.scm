@@ -647,6 +647,7 @@
        "if (!isvector("v")) { wrong_type(0); }"
        "if (!isint("i")) { wrong_type(1); }"
        "if (ival < 0 || ival >= oop_len("v")) { bad_index(); }"
+       "writebarrier("v");"
        "return(((vector *) "v")->data[ival] = "val");")
     (scheme (vector-ref v i))
     (dotnet ($ v)

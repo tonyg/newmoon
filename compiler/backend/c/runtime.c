@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <stdint.h>
 
+#include <assert.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <dlfcn.h>
@@ -17,24 +18,35 @@ typedef struct rootvec {
   oop roots[0];
 } rootvec;
 
+#define BARRIER_PAGE_MAX ((4096 / sizeof(oop) * 2) - 2)
+typedef struct barrier_page {
+  size_t count;
+  struct barrier_page *next_page;
+  oop saved[BARRIER_PAGE_MAX];
+} barrier_page;
+
 static unsigned int stack_limit_bytes = 256 * 1024;
-static jmp_buf toplevel_jmp;
-oop *gc_limit; /* nursery limit (on the stack) */
+static oop nursery_reentry_closure;
+static oop nursery_reentry_args;
+static sigjmp_buf toplevel_jmp;
+oop *gc_nursery_base; /* nursery base (at the top of the stack on x86) */
+oop *gc_nursery_limit; /* nursery limit (at the bottom of the stack on x86) */
 
 static rootvec *roots = NULL;
+static barrier_page *barrier = NULL;
 
 static size_t heapsize;
 static size_t heapalloced;
-static uint8_t *heapbase;
-static uint8_t *heapptr;
+uint8_t *heapbase;
+uint8_t *heapptr;
 
 #define INITIAL_SYMTAB_LEN 409
 static vector *symtab;
 
-static oop globals = mknull();
+static oop globals;
 
 void newmoontrace(char const *assemblyname, char const *functionname) {
-#if 0
+#if 1
   fflush(NULL);
   fprintf(stderr, "%s::%s\n", assemblyname, functionname);
 #endif
@@ -120,6 +132,12 @@ static void init_gc(void) {
   heapalloced = 0;
   heapbase = malloc(heapsize);
   heapptr = heapbase;
+
+  barrier = malloc(sizeof(barrier_page));
+  barrier->count = 0;
+  barrier->next_page = NULL;
+
+  globals = mknull();
 }
 
 static void double_heap(void) {
@@ -171,6 +189,31 @@ pair *raw_cons(oop a, oop d) {
   return p;
 }
 
+void add_to_write_barrier(oop p) {
+  object_header *o = (object_header *) p;
+  int flag = GETTAG(o->gc_info);
+  size_t index;
+
+  if (flag == FLAG_MUTATED) {
+    return;
+  }
+
+  assert(flag == FLAG_ORDINARY); /* it is an error to put anything else through the barrier */
+  assert(oop_type(p) != TYPE_CLOSURE); /* closures are a special shape and immutable anyway */
+
+  index = barrier->count;
+  if (index == BARRIER_PAGE_MAX) {
+    barrier_page *newpage = malloc(sizeof(barrier_page));
+    index = newpage->count = 0;
+    newpage->next_page = barrier;
+    barrier = newpage;
+  }
+  barrier->count++;
+  barrier->saved[index] = p;
+
+  o->gc_info = TAG(DETAG(o->gc_info), FLAG_MUTATED);
+}
+
 static box *raw_box(oop v) {
   box *b = raw_alloc(sizeof(box));
   init_object_header(b->header, TYPE_BOX, 1);
@@ -178,10 +221,128 @@ static box *raw_box(oop v) {
   return b;
 }
 
-void __attribute__((noreturn)) gc_stack_collector(void *f, ...) {
+static void dump_heapstats(void) {
+  fprintf(stderr, "main heap size %lu alloced %lu base %p\n",
+	  heapsize,
+	  heapalloced,
+	  heapbase);
+}
+
+static oop gc_copy(oop p); /* forward */
+static void gc_copy_array(oop *v, size_t count) {
+  int i;
+  for (i = 0; i < count; i++) {
+    v[i] = gc_copy(v[i]);
+  }
+}
+
+static oop gc_copy(oop p) {
+  object_header *o = (object_header *) p;
+  int flag;
+  size_t len;
+
+  fprintf(stderr, "gc_copy(%p)\n", p);
+
+  if (istagged(p)) {
+    return p;
+  }
+
+  if ((((uint8_t *) p) >= heapbase) && (((uint8_t *) p) < heapptr)) {
+    return p;
+  }
+
+  flag = GETTAG(o->gc_info);
+  len = oop_len(p);
+
+  switch (flag) {
+    case FLAG_FORWARDING:
+      return o->gc_info;
+    case FLAG_BINARY: {
+      binary *source = (binary *) p;
+      binary *target = raw_alloc(sizeof(binary) + len);
+      init_binary_header(target->header, TYPE_BINARY, len);
+      memcpy(target->data, source->data, len);
+      o->gc_info = target;
+      return o->gc_info;
+    }
+    case FLAG_ORDINARY:
+      if (oop_type(p) == TYPE_CLOSURE) {
+	closure *source = (closure *) p;
+	closure *target = raw_alloc(sizeof(closure) + (len * sizeof(oop)));
+	init_object_header(target->header, TYPE_CLOSURE, len);
+	target->code = source->code;
+	memcpy(target->environment, source->environment, len * sizeof(oop));
+	o->gc_info = target;
+	gc_copy_array(target->environment, len);
+	return o->gc_info;
+      }
+      /* else fall through */
+    case FLAG_MUTATED: {
+      /* we know this can't be a closure because of the check in add_to_write_barrier */
+      vector *source = (vector *) p;
+      vector *target = raw_alloc(sizeof(vector) + (len * sizeof(oop)));
+      init_object_header(target->header, oop_type(p), len);
+      memcpy(target->data, source->data, len * sizeof(oop));
+      o->gc_info = target;
+      gc_copy_array(target->data, len);
+      return o->gc_info;
+    }
+  }
+
+  assert(0); /* notreached */
+}
+
+void __attribute__((noreturn)) gc_stack_collector_no_varlambda() {
+  assert(0);
+}
+
+void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
+  /* Note that self is really the function that we were about to call
+     when we were interrupted by the need to GC! */
+
+  oop arglist = mkvoid();
+
   fflush(NULL);
-  fprintf(stderr, "gc_stack_collector unimplemented\n");
-  exit(11);
+  dump_heapstats();
+
+  fprintf(stderr, "gc_stack_collector IN  receiver %p with %d args\n", self, argc);
+  fprintf(stderr, "bottom of stack %p, limit %p, top %p\n",
+	  &arglist, gc_nursery_limit, gc_nursery_base);
+  extractvarargs(arglist, 0, argc, gc_stack_collector_no_varlambda, argc);
+
+  while (1) {
+    int i;
+    for (i = 0; i < barrier->count; i++) {
+      vector *p = (vector *) barrier->saved[i];
+      int flag = GETTAG(p->header.gc_info);
+      fprintf(stderr, "barrier %d %p flag %d count %ld type %ld\n",
+	      i, p, flag, oop_len(p), oop_type(p));
+      if (flag == FLAG_FORWARDING) {
+	/* it has already been copied */
+	continue;
+      }
+      assert(flag == FLAG_MUTATED);
+      gc_copy_array(p->data, oop_len(p));
+      p->header.gc_info = TAG(DETAG(p->header.gc_info), FLAG_ORDINARY);
+    }
+    if (barrier->next_page == NULL) {
+      barrier->count = 0;
+      break;
+    } else {
+      barrier_page *tmp_page = barrier->next_page;
+      free(barrier);
+      barrier = tmp_page;
+    }
+  }
+
+  self = gc_copy(self);
+  arglist = gc_copy(arglist);
+
+  fprintf(stderr, "gc_stack_collector OUT receiver %p with %d args\n", self, argc);
+
+  nursery_reentry_closure = self;
+  nursery_reentry_args = arglist;
+  siglongjmp(toplevel_jmp, 2);
 }
 
 box *lookup_global(char const *name, size_t len) {
@@ -216,10 +377,10 @@ oop vector_to_list(oop v) {
 /* Courtesy of http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx */
 static uint32_t fnv_hash(void const *data, size_t length) {
   uint8_t const *p = data;
-  uint32_t h = 2166136261;
+  uint32_t h = 0x811c9dc5;
   size_t i;
   for (i = 0; i < length; i++)
-    h = (h * 16777619) ^ p[i];
+    h = (h * 0x1000193) ^ p[i];
   return h;
 }
 
@@ -411,7 +572,7 @@ static __attribute__((noreturn)) void toplevel_k(constant_closure_env *self,
     free(bm);
     startup(NULL, 1, self);
   } else {
-    longjmp(toplevel_jmp, 1);
+    siglongjmp(toplevel_jmp, 1);
   }
 }
 
@@ -436,13 +597,27 @@ int newmoon_main(int argc,
     }
   }
 
-  if (setjmp(toplevel_jmp) == 0) {
-    oop base_oop;
+  switch (sigsetjmp(toplevel_jmp, 0)) {
+    case 0: {
+      oop base_oop;
 
-    gc_limit = &base_oop - (stack_limit_bytes / sizeof(oop));
+      gc_nursery_base = &base_oop;
+      gc_nursery_limit = &base_oop - (stack_limit_bytes / sizeof(oop));
 
-    allocenv(constant_closure_env, 0, toplevel_k, toplevel_k_oop);
-    toplevel_k(toplevel_k_oop, 1, mkvoid());
+      allocenv(constant_closure_env, 0, toplevel_k, toplevel_k_oop);
+      toplevel_k(toplevel_k_oop, 1, mkvoid());
+      assert(0); /* we never return directly, using siglongjmp instead */
+    }
+
+    case 1:
+      /* here's where the toplevel_k ends up when the whole program is over */
+      break;
+
+    case 2: {
+      /* here's where we end up on a minor GC */
+      callfun(nursery_reentry_closure, -1, nursery_reentry_args);
+      assert(0); /* we never return directly here, either */
+    }
   }
   return 0;
 }
