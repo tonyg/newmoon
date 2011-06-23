@@ -690,7 +690,6 @@
 			  "--mode=link"
 			  "gcc"
 			  "-g"
-			  "-O0"
 			  "-fomit-frame-pointer"
 			  "-foptimize-sibling-calls"
 			  (if (compiler$make-program)
