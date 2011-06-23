@@ -278,14 +278,18 @@
 		     (string->list str)))))
 
 (define (compiler-back-end-phases input-filename frontend-result)
-  (let* ((next-lambda-name (make-counter (lambda (c) (string-append "Fn" (number->string c)))))
-	 (next-envdef-name (make-counter (lambda (c) (string-append "Env" (number->string c)))))
-	 (next-label (make-counter (lambda (c) (string-append "L" (number->string c)))))
-	 (next-temp (make-counter (lambda (c) (string-append "T" (number->string c)))))
-	 (next-literal (make-counter (lambda (c) (string-append "Lit" (number->string c)))))
-	 (assembly-name (if (compiler$target-namespace)
+  (let* ((assembly-name (if (compiler$target-namespace)
 			    (compiler$target-namespace)
 			    (replace-filename-extension input-filename "")))
+	 (mangled-assembly-name (mangle-id assembly-name))
+	 (next-lambda-name (make-counter (lambda (c) (string-append mangled-assembly-name
+								    "_Fn" (number->string c)))))
+	 (next-envdef-name (make-counter (lambda (c) (string-append mangled-assembly-name
+								    "_Env" (number->string c)))))
+	 (next-label (make-counter (lambda (c) (string-append "L" (number->string c)))))
+	 (next-temp (make-counter (lambda (c) (string-append "T" (number->string c)))))
+	 (next-literal (make-counter (lambda (c) (string-append mangled-assembly-name
+								"_Lit" (number->string c)))))
 	 (output-filename (replace-filename-extension input-filename ".c"))
 	 (literal-table '())
 	 (global-table (make-hash-table))
