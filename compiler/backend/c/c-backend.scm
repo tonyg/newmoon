@@ -434,7 +434,8 @@
 				  ,arity
 				  ,(arginfo->id ai))))
 			    formals))
-	  (add-instr! varlambdacode `(,lambdaname self -2
+	  (add-instr! varlambdacode `(,lambdaname self
+						  ,(if varargs -2 arity)
 						  ,@(map (lambda (loc)
 							   (arginfo->id (@loc-local-arginfo loc)))
 							 formals)))
