@@ -444,7 +444,9 @@ oop scheme_display(oop x, oop p) {
 	   (int) oop_len(symbol_name(x)),
 	   ((binary *) symbol_name(x))->data);
   } else if (isbinary(x)) {
-    printf("%s", ((binary *) x)->data);
+    printf("%.*s", 
+	   (int) oop_len(x),
+	   ((binary *) x)->data);
   } else if (isvector(x)) {
     int i;
     int want_space = 0;
