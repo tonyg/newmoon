@@ -107,6 +107,7 @@ typedef enum {
 #define defglobal(n) static box *global__ ## n = NULL
 #define defliteral(n) static oop n = NULL
 #define globalbox(n) (global__ ## n)
+#define globalboxaddr(n) (&globalbox(n))
 #define globalget(n) (global__ ## n->value)
 #define globalset(n,v) setbox(global__ ## n, v)
 #define stackcheckdispatch(f)			\
@@ -145,6 +146,7 @@ typedef enum {
   ({ box *box_ = ((box *) (var)); writebarrier(box_); box_->value = (val); })
 #define getbox(var) (((box *) (var))->value)
 #define settemp(var, val) var = val
+#define tempaddr(var) (&(var))
 #define conditional(test, t, f)				\
   if ((test) != mkfalse()) { goto conditional__ ## t; }	\
   else { goto conditional__ ## f; }

@@ -645,7 +645,7 @@
 	    (add-instr! global-initialiser
 			`(registerroots ,(length mangled-global-ids)
 					,@(map (lambda (mid)
-						 `(globalbox ,mid))
+						 `(globalboxaddr ,mid))
 					       mangled-global-ids))))
 	  (for-each (lambda (entry)
 		      (let ((literalname (cadr entry)))
@@ -665,6 +665,10 @@
 						,(gen-literal-initialiser literal-initialiser
 									  literalvalue)))))
 		      (reverse literal-table))
+	    (add-instr! literal-initialiser
+			`(registerroots ,(length literal-table)
+					,@(map (lambda (entry) `(tempaddr ,(cadr entry)))
+					       (reverse literal-table))))
 	    (add-instr! literal-initialiser `(callfun ,first-function 1 k)))
 	  (for-each (emit-structdef o) all-structures)
 	  (for-each (emit-functionproto o) all-functions)

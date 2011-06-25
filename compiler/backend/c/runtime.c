@@ -15,7 +15,7 @@
 typedef struct rootvec {
   size_t length;
   struct rootvec *next;
-  oop roots[0];
+  oop *roots[0];
 } rootvec;
 
 #define BARRIER_PAGE_MAX ((4096 / sizeof(oop) * 2) - 2)
@@ -335,6 +335,18 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
     }
   }
 
+  {
+    rootvec *rv = roots;
+    while (rv != NULL) {
+      int i;
+      for (i = 0; i < rv->length; i++) {
+	oop *rptr = rv->roots[i];
+	*rptr = gc_copy(*rptr);
+      }
+      rv = rv->next;
+    }
+  }
+
   self = gc_copy(self);
   arglist = gc_copy(arglist);
 
@@ -463,7 +475,7 @@ void registerroots(int root_count, ...) {
   rv->next = roots;
   va_start(vl, root_count);
   for (i = 0; i < root_count; i++) {
-    rv->roots[i] = va_arg(vl, oop);
+    rv->roots[i] = va_arg(vl, oop *);
   }
   va_end(vl);
   roots = rv;
