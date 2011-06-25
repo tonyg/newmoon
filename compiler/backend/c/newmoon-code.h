@@ -256,7 +256,11 @@ extern oop scheme_current_output_port;
 extern box *lookup_global(char const *name, size_t len);
 extern oop intern(char const *str, size_t len);
 extern oop gensym(char const *prefix);
+#if 1
+#define newmoontrace(assemblyname, functionname)
+#else
 extern void newmoontrace(char const *assemblyname, char const *functionname);
+#endif
 extern void __attribute__((noreturn)) wrong_type(int arg_index);
 extern void __attribute__((noreturn)) bad_index(void);
 extern void __attribute__((noreturn)) wrong_fixed_argc(int argc, int arity);

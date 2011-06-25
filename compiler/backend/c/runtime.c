@@ -12,6 +12,8 @@
 
 #include "newmoon-code.h"
 
+#define GC_NOISE_LEVEL 0
+
 typedef struct rootvec {
   size_t length;
   struct rootvec *next;
@@ -45,11 +47,10 @@ static vector *symtab;
 
 static oop globals;
 
+#undef newmoontrace
 void newmoontrace(char const *assemblyname, char const *functionname) {
-#if 1
   fflush(NULL);
   fprintf(stderr, "%s::%s\n", assemblyname, functionname);
-#endif
 }
 
 void __attribute__((noreturn)) wrong_type(int arg_index) {
@@ -222,10 +223,12 @@ static box *raw_box(oop v) {
 }
 
 static void dump_heapstats(void) {
+#if GC_NOISE_LEVEL > 0
   fprintf(stderr, "main heap size %lu alloced %lu base %p\n",
 	  heapsize,
 	  heapalloced,
 	  heapbase);
+#endif
 }
 
 static oop gc_copy(oop p); /* forward */
@@ -241,7 +244,9 @@ static oop gc_copy(oop p) {
   int flag;
   size_t len;
 
+#if GC_NOISE_LEVEL > 2
   fprintf(stderr, "gc_copy(%p)\n", p);
+#endif
 
   if (istagged(p)) {
     return p;
@@ -305,9 +310,11 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
   fflush(NULL);
   dump_heapstats();
 
+#if GC_NOISE_LEVEL > 1
   fprintf(stderr, "gc_stack_collector IN  receiver %p with %d args\n", self, argc);
   fprintf(stderr, "bottom of stack %p, limit %p, top %p\n",
 	  &arglist, gc_nursery_limit, gc_nursery_base);
+#endif
   extractvarargs(arglist, 0, argc, gc_stack_collector_no_varlambda, argc);
 
   while (1) {
@@ -315,8 +322,10 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
     for (i = 0; i < barrier->count; i++) {
       vector *p = (vector *) barrier->saved[i];
       int flag = GETTAG(p->header.gc_info);
+#if GC_NOISE_LEVEL > 2
       fprintf(stderr, "barrier %d %p flag %d count %ld type %ld\n",
 	      i, p, flag, oop_len(p), oop_type(p));
+#endif
       if (flag == FLAG_FORWARDING) {
 	/* it has already been copied */
 	continue;
@@ -350,7 +359,9 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
   self = gc_copy(self);
   arglist = gc_copy(arglist);
 
+#if GC_NOISE_LEVEL > 1
   fprintf(stderr, "gc_stack_collector OUT receiver %p with %d args\n", self, argc);
+#endif
 
   nursery_reentry_closure = self;
   nursery_reentry_args = arglist;
@@ -495,7 +506,7 @@ static struct bootmod {
 static void push_bootmod_def(char const *name, initGlobals_fn ig, startup_fn s) {
   struct bootmod *bm = malloc(sizeof(struct bootmod));
   fflush(NULL);
-  fprintf(stderr, "Adding boot module definition %s with %p/%p\n", name, ig, s);
+  /* fprintf(stderr, "Adding boot module definition %s with %p/%p\n", name, ig, s); */
   bm->next = bootmods;
   bm->name = name;
   bm->initGlobals = ig;
@@ -507,7 +518,7 @@ static int load_module_internal(char const *name, struct bootmod *bm) {
   void *h, *ig, *s;
 
   fflush(NULL);
-  fprintf(stderr, "Opening boot module %s...\n", name);
+  /* fprintf(stderr, "Opening boot module %s...\n", name); */
   h = dlopen(name, RTLD_LAZY | RTLD_LOCAL);
   if (h == NULL) {
     fprintf(stderr, "%s\n", dlerror());
@@ -582,7 +593,7 @@ static __attribute__((noreturn)) void toplevel_k(constant_closure_env *self,
     startup_fn startup = bm->startup;
     bootmods = bm->next;
     fflush(NULL);
-    fprintf(stderr, "Booting module %s...\n", bm->name);
+    /* fprintf(stderr, "Booting module %s...\n", bm->name); */
     free(bm);
     startup(NULL, 1, self);
   } else {
@@ -605,7 +616,7 @@ int newmoon_main(int argc,
     struct bootmod *bm = bootmods;
     while (bm != NULL) {
       fflush(NULL);
-      fprintf(stderr, "Initialising globals for %s\n", bm->name);
+      /* fprintf(stderr, "Initialising globals for %s\n", bm->name); */
       bm->initGlobals();
       bm = bm->next;
     }
