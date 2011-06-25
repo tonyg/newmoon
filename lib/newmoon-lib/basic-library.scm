@@ -170,7 +170,8 @@
 
 (define (= x y)
   (%assemble (x y) (x y)
-    (c "return(scheme_boolean(numeric_equality("x", "y")))")
+    (c "extern int numeric_equality(oop, oop);"
+       "return(scheme_boolean(numeric_equality("x", "y")))")
     (scheme (= x y))
     (dotnet ($ x)
 	    ($ y)
@@ -186,11 +187,13 @@
 
 (define (< x y)
   (%assemble (x y) (x y)
-    (c "return(scheme_boolean(numeric_lt("x", "y")))")))
+    (c "extern int numeric_lt(oop, oop);"
+       "return(scheme_boolean(numeric_lt("x", "y")))")))
 
 (define (> x y)
   (%assemble (x y) (x y)
-    (c "return(scheme_boolean(numeric_gt("x", "y")))")
+    (c "extern int numeric_gt(oop, oop);"
+       "return(scheme_boolean(numeric_gt("x", "y")))")
     (scheme (> x y))
     (dotnet ($ x)
 	    ($ y)

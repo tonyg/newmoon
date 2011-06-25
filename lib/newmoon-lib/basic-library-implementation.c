@@ -112,16 +112,16 @@ oop numeric_minus(oop a, oop b) {
   return litint(v);
 }
 
-oop numeric_equality(oop a, oop b) {
-  return scheme_boolean(DETAG(a) == DETAG(b));
+int numeric_equality(oop a, oop b) {
+  return DETAG(a) == DETAG(b);
 }
 
-oop numeric_lt(oop a, oop b) {
-  return scheme_boolean(DETAG(a) < DETAG(b));
+int numeric_lt(oop a, oop b) {
+  return DETAG(a) < DETAG(b);
 }
 
-oop numeric_gt(oop a, oop b) {
-  return scheme_boolean(DETAG(a) > DETAG(b));
+int numeric_gt(oop a, oop b) {
+  return DETAG(a) > DETAG(b);
 }
 
 oop basic_library_load_module(oop name) {
