@@ -12,6 +12,8 @@
 
 #include "newmoon-code.h"
 
+#define INITIAL_HEAP_SIZE (128 * 1024)
+#define INITIAL_NURSERY_SIZE (512 * 1024)
 #define GC_NOISE_LEVEL 0
 
 typedef struct rootvec {
@@ -27,7 +29,7 @@ typedef struct barrier_page {
   oop saved[BARRIER_PAGE_MAX];
 } barrier_page;
 
-static unsigned int stack_limit_bytes = 256 * 1024;
+static unsigned int stack_limit_bytes = INITIAL_NURSERY_SIZE;
 static oop nursery_reentry_closure;
 static oop nursery_reentry_args;
 static sigjmp_buf toplevel_jmp;
@@ -37,10 +39,7 @@ oop *gc_nursery_limit; /* nursery limit (at the bottom of the stack on x86) */
 static rootvec *roots = NULL;
 static barrier_page *barrier = NULL;
 
-static size_t heapsize;
-static size_t heapalloced;
-uint8_t *heapbase;
-uint8_t *heapptr;
+heap active_heap;
 
 #define INITIAL_SYMTAB_LEN 409
 static vector *symtab;
@@ -129,10 +128,13 @@ oop gensym(char const *prefix) {
 }
 
 static void init_gc(void) {
-  heapsize = 1024 * 1024;
-  heapalloced = 0;
-  heapbase = malloc(heapsize);
-  heapptr = heapbase;
+  active_heap.size = INITIAL_HEAP_SIZE;
+  active_heap.gc_threshold = active_heap.size * 3 / 4;
+  active_heap.double_threshold = active_heap.size / 2;
+  active_heap.double_next_collection = 0;
+  active_heap.alloced = 0;
+  active_heap.base = malloc(active_heap.size);
+  active_heap.ptr = active_heap.base;
 
   barrier = malloc(sizeof(barrier_page));
   barrier->count = 0;
@@ -141,36 +143,25 @@ static void init_gc(void) {
   globals = mknull();
 }
 
-static void double_heap(void) {
-  uint8_t *newbase;
-
-  heapsize <<= 1;
-
-  newbase = realloc(heapbase, heapsize);
-  if (newbase == NULL) {
-    die("Could not double heap");
-  }
-  if (newbase != heapbase) {
-    /* Edgy. */
-    die("Could not resize heap in place");
-  }
-
-  heapbase = newbase;
-  heapptr = heapbase + heapalloced;
+static inline int heap_needs_gc(heap *h) {
+  return h->alloced > h->gc_threshold;
 }
 
 void *raw_alloc(size_t size_bytes) {
   size_bytes += sizeof(oop) - 1;
   size_bytes &= ~(sizeof(oop) - 1); /* align to pointer size */
 
-  while (heapalloced + size_bytes > heapsize) {
-    double_heap();
+  if (heap_needs_gc(&active_heap)) {
+    gc_nursery_limit = gc_nursery_base; /* signal that a GC is required */
+    if (active_heap.alloced > active_heap.size) {
+      die("Out of memory");
+    }
   }
 
   {
-    void *ptr = heapptr;
-    heapalloced += size_bytes;
-    heapptr = heapbase + heapalloced;
+    void *ptr = active_heap.ptr;
+    active_heap.alloced += size_bytes;
+    active_heap.ptr = active_heap.base + active_heap.alloced;
     return ptr;
   }
 }
@@ -222,12 +213,13 @@ static box *raw_box(oop v) {
   return b;
 }
 
-static void dump_heapstats(void) {
+static void dump_heapstats(char const *heapname, heap *heap) {
 #if GC_NOISE_LEVEL > 0
-  fprintf(stderr, "main heap size %lu alloced %lu base %p\n",
-	  heapsize,
-	  heapalloced,
-	  heapbase);
+  fprintf(stderr, "%s heap size %lu alloced %lu base %p\n",
+	  heapname,
+	  heap->size,
+	  heap->alloced,
+	  heap->base);
 #endif
 }
 
@@ -252,7 +244,7 @@ static oop gc_copy(oop p) {
     return p;
   }
 
-  if ((((uint8_t *) p) >= heapbase) && (((uint8_t *) p) < heapptr)) {
+  if (is_in_heap(p, active_heap)) {
     return p;
   }
 
@@ -297,6 +289,27 @@ static oop gc_copy(oop p) {
   assert(0); /* notreached */
 }
 
+static void alloc_new_arena(void) {
+  if (active_heap.double_next_collection) {
+    active_heap.size <<= 1;
+    active_heap.gc_threshold <<= 1;
+    active_heap.double_threshold <<= 1;
+    active_heap.double_next_collection = 0;
+  }
+  active_heap.alloced = 0;
+  active_heap.base = malloc(active_heap.size);
+  active_heap.ptr = active_heap.base;
+}
+
+static void dealloc_heap(heap *heap) {
+#if GC_NOISE_LEVEL > 0
+  fprintf(stderr, "dealloc_heap %p of size %lu\n",
+	  heap->base,
+	  heap->size);
+#endif
+  free(heap->base);
+}
+
 void __attribute__((noreturn)) gc_stack_collector_no_varlambda() {
   assert(0);
 }
@@ -306,9 +319,17 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
      when we were interrupted by the need to GC! */
 
   oop arglist = mkvoid();
+  int switching_main_heaps;
+  heap old_heap; /* only initialized and used if switching_main_heaps != 0 */
 
   fflush(NULL);
-  dump_heapstats();
+  dump_heapstats("main", &active_heap);
+
+  switching_main_heaps = heap_needs_gc(&active_heap);
+  if (switching_main_heaps) {
+    old_heap = active_heap;
+    alloc_new_arena();
+  }
 
 #if GC_NOISE_LEVEL > 1
   fprintf(stderr, "gc_stack_collector IN  receiver %p with %d args\n", self, argc);
@@ -362,6 +383,19 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
 #if GC_NOISE_LEVEL > 1
   fprintf(stderr, "gc_stack_collector OUT receiver %p with %d args\n", self, argc);
 #endif
+
+  if (switching_main_heaps) {
+    dealloc_heap(&old_heap);
+
+    if (active_heap.alloced > active_heap.double_threshold) {
+#if GC_NOISE_LEVEL > 0
+      fprintf(stderr, "main heap has %lu bytes alloced, which is above double threshold %lu\n",
+	      active_heap.alloced,
+	      active_heap.double_threshold);
+#endif
+      active_heap.double_next_collection = 1;
+    }
+  }
 
   nursery_reentry_closure = self;
   nursery_reentry_args = arglist;
@@ -640,6 +674,11 @@ int newmoon_main(int argc,
 
     case 2: {
       /* here's where we end up on a minor GC */
+      oop base_oop;
+
+      gc_nursery_base = &base_oop;
+      gc_nursery_limit = &base_oop - (stack_limit_bytes / sizeof(oop));
+
       callfun(nursery_reentry_closure, -1, nursery_reentry_args);
       assert(0); /* we never return directly here, either */
     }

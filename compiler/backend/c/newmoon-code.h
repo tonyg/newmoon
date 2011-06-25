@@ -7,6 +7,16 @@
 typedef void *oop;
 typedef oop continuation;
 
+typedef struct heap {
+  uint8_t *base;
+  uint8_t *ptr;
+  size_t alloced;
+  size_t gc_threshold;
+  size_t size;
+  size_t double_threshold;
+  int double_next_collection;
+} heap;
+
 typedef struct {
   oop gc_info;
 } object_header;
@@ -104,6 +114,10 @@ typedef enum {
   TAG_SPECIAL = 3
 } tag_enum;
 
+#define is_in_heap(p, h)			\
+  ((((uint8_t *) (p)) >= (h).base) &&	\
+   (((uint8_t *) (p)) < (h).ptr))
+
 #define defglobal(n) static box *global__ ## n = NULL
 #define defliteral(n) static oop n = NULL
 #define globalbox(n) (global__ ## n)
@@ -117,10 +131,10 @@ typedef enum {
       ? (newmoon_code) gc_stack_collector	\
       : (f);					\
   })
-#define writebarrier(p)							\
-  ({									\
-    if (((uint8_t *) (p) >= heapbase) && ((uint8_t *) (p) < heapptr))	\
-      add_to_write_barrier(p);						\
+#define writebarrier(p)				\
+  ({						\
+    if (is_in_heap(p, active_heap))		\
+      add_to_write_barrier(p);			\
   })
 #define closurecode(f)							\
   (isclosure(f) ? ((closure *) (f))->code : (newmoon_code) call_to_non_procedure)
@@ -251,6 +265,8 @@ typedef enum {
       DETAG(i);					\
     })
 
+extern heap active_heap;
+
 extern oop apply_oop;
 extern oop scheme_current_output_port;
 extern box *lookup_global(char const *name, size_t len);
@@ -286,8 +302,6 @@ extern int newmoon_main(int argc,
 			__attribute__((noreturn)) void (*startup)(oop,int,continuation));
 extern void registerroots(int root_count, ...);
 
-extern uint8_t *heapbase;
-extern uint8_t *heapptr;
 extern oop *gc_nursery_base;
 extern oop *gc_nursery_limit;
 extern void __attribute__((noreturn)) gc_stack_collector(oop receiver, int argc, ...);
