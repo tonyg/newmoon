@@ -457,7 +457,7 @@ box *lookup_global(char const *name, size_t len) {
   }
 
   {
-    box *entry_box = raw_box(mkvoid());
+    box *entry_box = raw_box(namesym); /* TODO: not a bad placeholder, but could be better */
     globals = raw_cons(raw_cons(namesym, entry_box), globals);
     return entry_box;
   }
