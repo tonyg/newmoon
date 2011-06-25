@@ -17,9 +17,10 @@
 #define NOISE_LEVEL_MINOR 2
 #define NOISE_LEVEL_VERBOSE 3
 
-#define INITIAL_HEAP_SIZE (128 * 1024)
+#define INITIAL_HEAP_SIZE (512 * 1024)
 #define INITIAL_NURSERY_SIZE (512 * 1024)
-#define GC_NOISE_LEVEL NOISE_LEVEL_SILENT
+#define INITIAL_SYMTAB_LEN 409
+#define GC_NOISE_LEVEL NOISE_LEVEL_MAJOR
 
 typedef struct rootvec {
   size_t length;
@@ -46,8 +47,8 @@ static barrier_page *barrier = NULL;
 
 heap active_heap;
 
-#define INITIAL_SYMTAB_LEN 409
 static vector *symtab;
+static int symbol_count;
 
 static oop globals;
 
@@ -173,13 +174,19 @@ void *raw_alloc(size_t size_bytes) {
   }
 }
 
-static void init_symtab(void) {
+static void init_symtab(intptr_t symtab_len) {
   int i;
-  symtab = raw_alloc(sizeof(vector) + INITIAL_SYMTAB_LEN * sizeof(oop));
-  init_object_header(symtab->header, TYPE_VECTOR, INITIAL_SYMTAB_LEN);
-  for (i = 0; i < INITIAL_SYMTAB_LEN; i++) {
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MAJOR
+  fprintf(stderr,
+	  "creating symtab with %d entries (%d symbols known previously)\n",
+	  (int) symtab_len, symbol_count);
+#endif
+  symtab = raw_alloc(sizeof(vector) + symtab_len * sizeof(oop));
+  init_object_header(symtab->header, TYPE_VECTOR, symtab_len);
+  for (i = 0; i < symtab_len; i++) {
     symtab->data[i] = mknull();
   }
+  symbol_count = 0;
 }
 
 pair *raw_cons(oop a, oop d) {
@@ -335,7 +342,8 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
   switching_main_heaps = heap_needs_gc(&active_heap);
   if (switching_main_heaps) {
 #if GC_NOISE_LEVEL >= NOISE_LEVEL_MAJOR
-    fprintf(stderr, "switching main heaps\n");
+    fprintf(stderr, "switching main heaps at %lu of %lu bytes\n",
+	    active_heap.alloced, active_heap.size);
 #endif
     old_heap = active_heap;
     alloc_new_arena();
@@ -390,9 +398,10 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
   if (switching_main_heaps) {
     /* Copy the symbol table over. */
     vector *oldtab = symtab;
+    int oldlen = oop_len(oldtab);
     int i;
-    init_symtab();
-    for (i = 0; i < INITIAL_SYMTAB_LEN; i++) {
+    init_symtab((symbol_count * 3) | 1);
+    for (i = 0; i < oldlen; i++) {
       pair *p = oldtab->data[i];
       while (p != mknull()) {
 	symbol *sym = (symbol *) p->car;
@@ -403,6 +412,7 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
 	  assert(is_in_heap(sym->header.gc_info, active_heap));
 	  sym = sym->header.gc_info;
 	  symtab->data[i] = raw_cons(sym, symtab->data[i]);
+	  symbol_count++;
 	}
 	p = p->cdr;
       }
@@ -501,6 +511,7 @@ oop intern(char const *str, size_t len) {
     sym->name = name;
 
     symtab->data[probe] = raw_cons(sym, symtab->data[probe]);
+    symbol_count++;
     return sym;
   }
 }
@@ -673,7 +684,7 @@ int newmoon_main(int argc,
 		 startup_fn startup)
 {
   init_gc();
-  init_symtab();
+  init_symtab(INITIAL_SYMTAB_LEN);
 
   push_bootmod_def("(main)", initGlobals, startup);
   push_bootmod("basic-library");
