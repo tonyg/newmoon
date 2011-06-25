@@ -31,3 +31,5 @@
 (define (inexact->exact x) x)
 (define (number->string x . maybe-radix) "")
 (define (string->number x) 0)
+(define (min a b) (if (< a b) a b))
+(define (max a b) (if (> a b) a b))

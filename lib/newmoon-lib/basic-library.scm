@@ -221,19 +221,15 @@
 	 (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
 	 (invoke "sisc.data.Quantity" "add" "sisc.data.Quantity" ("sisc.data.Quantity") virtual))))
 
-(define (- x y)
-  (%assemble (x y) (x y)
-    (c "extern oop numeric_minus(oop, oop);"
-       "return(numeric_minus("x", "y"))")
-    (scheme (- x y))
-    (dotnet ($ x)
-	    ($ y)
-	    (call "object class [Newmoon]Newmoon.Number::Sub(object, object)"))
-    (jvm ($ x)
-	 (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
-	 ($ y)
-	 (invoke "sisc.util.Util" "num" "sisc.data.Quantity" ("sisc.data.Value") static)
-	 (invoke "sisc.data.Quantity" "sub" "sisc.data.Quantity" ("sisc.data.Quantity") virtual))))
+(define (- x . y)
+  (if (null? y)
+      (%assemble (x) (x)
+	(c "return(litint(-DETAG("x")));")
+	(scheme (- x)))
+      (%assemble (x y) (x (car y))
+	(c "extern oop numeric_minus(oop, oop);"
+	   "return(numeric_minus("x", "y"))")
+	(scheme (- x y)))))
 
 (define (caar x) (car (car x)))
 (define (cadr x) (car (cdr x)))
@@ -324,7 +320,8 @@
 (begin-for-syntax
  (define apply
    (%assemble () ()
-     (c "return(apply_oop);")
+     (c "extern oop apply_oop;"
+	"return(apply_oop);")
      (scheme coreeval$apply)
      (dotnet (newobj "instance void class [Newmoon]Newmoon.ApplyTailClosure::.ctor()")))))
 
@@ -485,6 +482,20 @@
 	(let ((old value))
 	  (set! value (car x))
 	  old))))
+
+(defmacro parameterize (bindings . body)
+  (let* ((bs (map1 (lambda (binding) (cons (gensym "parameterize-old")
+					   (cons (gensym "parameterize-parameter")
+						 binding)))
+		   bindings))
+	 (result (gensym "parameterize-result")))
+    ;;; %%% Should use dynamic-wind
+    `(let (,@(map1 (lambda (b) `(,(cadr b) ,(caddr b))) bs))
+       (let (,@(map1 (lambda (b) `(,(car b) (,(cadr b)))) bs))
+	 ,@(map1 (lambda (b) `(,(cadr b) ,(cadddr b))) bs)
+	 (let ((,result (begin ,@body)))
+	   ,@(map1 (lambda (b) `(,(cadr b) ,(car b))) bs)
+	   result)))))
 
 (define (dynamic-wind w thunk u) ;; %%% completely bogus
   (begin
@@ -704,12 +715,10 @@
      (else (loop (cdr lst))))))
 
 (define (error message . args)
-  (%assemble (message args) (message args)
-    (c "scheme_error(\"unimplemented\");")
-    (dotnet ($ message)
-	    ($ args)
-	    (castclass "class [Newmoon]Newmoon.List")
-	    (call "object class [Newmoon]Newmoon.Primitive::SchemeError(object, class [Newmoon]Newmoon.List)"))))
+  (display (cons message args))
+  (newline)
+  (%assemble () ()
+    (c "die(\"The error procedure is unimplemented\");")))
 
 (%backend c
 	  "#include <sys/types.h>"
@@ -784,9 +793,9 @@
 (defmacro let-optionals* (restvar vardefs . body)
   (let ((optional-clause (lambda (vardef)
 			   `(:optional ,restvar ,(cadr vardef)
-				       ,@(map (lambda (pred)
-						`(lambda (,(car vardef)) ,pred))
-					      (cddr vardef))))))
+				       ,@(map1 (lambda (pred)
+						 `(lambda (,(car vardef)) ,pred))
+					       (cddr vardef))))))
     (cond
      ((null? vardefs) `(let () ,@body))
      ((null? (cdr vardefs))
@@ -825,6 +834,65 @@
 
 (defmacro delay (expression)
   `(make-promise (lambda () ,expression)))
+
+(define (%%extract f lists)
+  (if (null? lists)
+      '()
+      (let ((lis (car lists))
+	    (rest (%%extract f (cdr lists))))
+	(and rest
+	     (pair? lis)
+	     (cons (f lis) rest)))))
+
+(define (map f lis1 . lists)
+  (if (null? lists)
+      (map1 f lis1)
+      (let loop ((lists (cons lis1 lists)))
+	(let ((remainder (%%extract cdr lists)))
+	  (if remainder
+	      (let ((x (apply f (%%extract car lists))))
+		(cons x (loop remainder)))
+	      '())))))
+
+(define (for-each f lis1 . lists)
+  (if (null? lists)
+      (foreach1 f lis1)
+      (let loop ((lists (cons lis1 lists)))
+	(let ((remainder (%%extract cdr lists)))
+	  (if remainder
+	      (begin (apply f (%%extract car lists))
+		     (loop remainder))
+	      #t)))))
+
+(define (fixnum? x)
+  (%assemble (x) (x)
+    (c "return(scheme_boolean(isint("x")));")))
+
+(define (negative? x)
+  (%assemble (x) (x)
+    (c "return(scheme_boolean(DETAG("x") < 0));")))
+
+(define (zero? x)
+  (%assemble (x) (x)
+    (c "return(scheme_boolean(DETAG("x") == 0));")))
+
+(define (positive? x)
+  (%assemble (x) (x)
+    (c "return(scheme_boolean(DETAG("x") > 0));")))
+
+(defmacro trace (x)
+  `(begin
+     (display '|Tracing |)
+     (display ',x)
+     (newline)
+     (set! ,x (let ((,x ,x))
+		(lambda args
+		  (display (cons 'IN (cons ',x args)))
+		  (newline)
+		  (let ((result (apply ,x args)))
+		    (display (cons 'OUT (cons result (cons '<-- (cons ',x args)))))
+		    (newline)
+		    result))))))
 
 (require (lib "r5rs-misc.scm"))
 (require (lib "r5rs-ports.scm"))

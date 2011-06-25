@@ -3,6 +3,9 @@
 #include <string.h>
 #include <alloca.h>
 #include <stdint.h>
+#include <stdio.h>
+
+#define DISABLE_NEWMOONTRACE 1
 
 typedef void *oop;
 typedef oop continuation;
@@ -115,6 +118,14 @@ typedef enum {
   TAG_SPECIAL = 3
 } tag_enum;
 
+typedef enum {
+  SPECIAL_NULL = 0,
+  SPECIAL_VOID = 1,
+  SPECIAL_TRUE = 2,
+  SPECIAL_FALSE = 3,
+  SPECIAL_EOF = 4
+} special_enum;
+
 #define is_in_heap(p, h)			\
   ((((uint8_t *) (p)) >= (h).base) &&	\
    (((uint8_t *) (p)) < (h).ptr))
@@ -172,10 +183,11 @@ typedef enum {
 #define deftemp(varname, e) oop varname = e
 #define addressof(x) ((oop) &(x))
 #define initglobal(v, name) global__ ## v = lookup_global(name, strlen(name));
-#define mknull() TAG(0, TAG_SPECIAL)
-#define mkvoid() TAG(1, TAG_SPECIAL)
-#define mktrue() TAG(2, TAG_SPECIAL)
-#define mkfalse() TAG(3, TAG_SPECIAL)
+#define mknull() TAG(SPECIAL_NULL, TAG_SPECIAL)
+#define mkvoid() TAG(SPECIAL_VOID, TAG_SPECIAL)
+#define mktrue() TAG(SPECIAL_TRUE, TAG_SPECIAL)
+#define mkfalse() TAG(SPECIAL_FALSE, TAG_SPECIAL)
+#define mkeof() TAG(SPECIAL_EOF, TAG_SPECIAL)
 #define mkchar(x) TAG(x, TAG_CHAR)
 #define litint(i) TAG(i, TAG_INT)
 #define mkveclike(typetag, size) ({					\
@@ -195,6 +207,13 @@ typedef enum {
       binary *_tmp = alloca(sizeof(binary) + len);	  \
       init_binary_header(_tmp->header, TYPE_BINARY, len); \
       memcpy(&(_tmp->data[0]), initbytes, len);		  \
+      _tmp;						  \
+    });
+#define defbinaryset(name, len, initbyte)		  \
+  binary *name = ({					  \
+      binary *_tmp = alloca(sizeof(binary) + len);	  \
+      init_binary_header(_tmp->header, TYPE_BINARY, len); \
+      memset(&(_tmp->data[0]), initbyte, len);		  \
       _tmp;						  \
     });
 #define extractsingleactual(complainer, arity, name)			\
@@ -227,6 +246,7 @@ typedef enum {
       va_end(the_va_list);						\
     } else {								\
       pair *prev = NULL;						\
+      varname = mknull();						\
       if (argc < mandatoryargc) {					\
 	wrong_variable_argc(argc, mandatoryargc);			\
       }									\
@@ -268,12 +288,10 @@ typedef enum {
 
 extern heap active_heap;
 
-extern oop apply_oop;
-extern oop scheme_current_output_port;
 extern box *lookup_global(char const *name, size_t len);
 extern oop intern(char const *str, size_t len);
 extern oop gensym(char const *prefix);
-#if 1
+#if DISABLE_NEWMOONTRACE
 #define newmoontrace(assemblyname, functionname)
 #else
 extern void newmoontrace(char const *assemblyname, char const *functionname);
@@ -285,7 +303,6 @@ extern void __attribute__((noreturn)) wrong_variable_argc(int argc, int arity);
 extern void __attribute__((noreturn)) wrong_fixed_argc_apply(oop args, int arity);
 extern void __attribute__((noreturn)) wrong_variable_argc_apply(oop args, int arity);
 extern void __attribute__((noreturn)) die(char const *message);
-extern void __attribute__((noreturn)) scheme_error(char const *message);
 extern void __attribute__((noreturn)) scheme_posix_error(char const *message, int posix_errno);
 extern void __attribute__((noreturn)) call_to_non_procedure(oop receiver, int argc, ...);
 extern void *raw_alloc(size_t size_bytes);
@@ -293,9 +310,7 @@ extern pair *raw_cons(oop a, oop d);
 extern void add_to_write_barrier(oop p);
 extern oop symbol_name(oop s);
 extern oop vector_to_list(oop v);
-#define scheme_current_output_port mknull()
-extern oop scheme_display(oop x, oop p);
-extern oop scheme_newline(oop p);
+extern void scheme_display(FILE *f, oop x);
 extern oop load_module(char const *name);
 extern int newmoon_main(int argc,
 			char const *argv,

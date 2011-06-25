@@ -16,10 +16,48 @@ static void __attribute__((noreturn)) apply_implementation(closure *self,
 							   oop f,
 							   ...)
 {
-  die("apply");
+  pair *prev = NULL;
+  pair *arglist = mknull();
+  pair *p;
+  int i;
+  va_list vl;
+  oop a;
+
+  if (argc < 3) {
+    wrong_variable_argc(argc, 3);
+  }
+
+  va_start(vl, f);
+  for (i = (argc - 3) - 1; i >= 0; i--) {
+    p = alloca(sizeof(pair));
+    a = va_arg(vl, oop);
+    *p = (pair) mkpair(a, mknull());
+    if (prev == NULL) {
+      arglist = p;
+    } else {
+      prev->cdr = p;
+    }
+    prev = p;
+  }
+  a = va_arg(vl, oop);
+  if (!(ispair(a) || isnil(a))) {
+    wrong_type(argc);
+  }
+  if (prev == NULL) {
+    arglist = a;
+  } else {
+    prev->cdr = a;
+  }
+  va_end(vl);
+
+  p = alloca(sizeof(pair));
+  *p = (pair) mkpair(k, arglist);
+  arglist = p;
+
+  checkedcallfun(f, -1, arglist);
 }
 closure apply_closure = (closure) {
-  MAKE_GC_INFO(TYPE_CLOSURE, 0, 1),
+  MAKE_GC_INFO(TYPE_CLOSURE, 0, FLAG_ORDINARY),
   (newmoon_code) apply_implementation
 };
 oop apply_oop = &apply_closure;

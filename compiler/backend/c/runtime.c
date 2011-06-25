@@ -21,7 +21,7 @@
 #define INITIAL_HEAP_SIZE (512 * 1024)
 #define INITIAL_NURSERY_SIZE (512 * 1024)
 #define INITIAL_SYMTAB_LEN 409
-#define GC_NOISE_LEVEL NOISE_LEVEL_MAJOR
+#define GC_NOISE_LEVEL NOISE_LEVEL_SILENT
 
 typedef struct rootvec {
   size_t length;
@@ -101,10 +101,6 @@ void __attribute__((noreturn)) die(char const *message) {
   exit(1);
 }
 
-void __attribute__((noreturn)) scheme_error(char const *message) {
-  die(message);
-}
-
 void __attribute__((noreturn)) scheme_posix_error(char const *message, int posix_errno) {
   errno = posix_errno;
   perror(message);
@@ -113,11 +109,9 @@ void __attribute__((noreturn)) scheme_posix_error(char const *message, int posix
 
 void __attribute__((noreturn)) call_to_non_procedure(oop receiver, int argc, ...) {
   fflush(NULL);
-  fprintf(stderr, "Call to non-procedure (argc == %d)\n", argc);
-  printf("Receiver: ");
-  scheme_display(receiver, NULL);
-  printf("\n");
-  fflush(NULL);
+  fprintf(stderr, "Call to non-procedure (argc == %d): %p ", argc, receiver);
+  scheme_display(stderr, receiver);
+  fprintf(stderr, "\n");
   exit(1);
 }
 
@@ -246,6 +240,7 @@ static void gc_copy_array(oop *v, size_t count) {
 
 static oop gc_copy(oop p) {
   object_header *o = (object_header *) p;
+  oop new_oop;
   int flag;
   size_t len;
 
@@ -264,16 +259,23 @@ static oop gc_copy(oop p) {
   flag = GETTAG(o->gc_info);
   len = oop_len(p);
 
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_VERBOSE
+  fprintf(stderr, " - flag %d len %lu type %lu\n",
+	  flag, len, oop_type(p));
+#endif
+
   switch (flag) {
     case FLAG_FORWARDING:
-      return o->gc_info;
+      new_oop = o->gc_info;
+      break;
     case FLAG_BINARY: {
       binary *source = (binary *) p;
       binary *target = raw_alloc(sizeof(binary) + len);
       init_binary_header(target->header, TYPE_BINARY, len);
       memcpy(target->data, source->data, len);
       o->gc_info = target;
-      return o->gc_info;
+      new_oop = o->gc_info;
+      break;
     }
     case FLAG_ORDINARY:
       if (oop_type(p) == TYPE_CLOSURE) {
@@ -284,7 +286,8 @@ static oop gc_copy(oop p) {
 	memcpy(target->environment, source->environment, len * sizeof(oop));
 	o->gc_info = target;
 	gc_copy_array(target->environment, len);
-	return o->gc_info;
+	new_oop = o->gc_info;
+	break;
       }
       /* else fall through */
     case FLAG_MUTATED: {
@@ -295,11 +298,15 @@ static oop gc_copy(oop p) {
       memcpy(target->data, source->data, len * sizeof(oop));
       o->gc_info = target;
       gc_copy_array(target->data, len);
-      return o->gc_info;
+      new_oop = o->gc_info;
+      break;
     }
   }
 
-  assert(0); /* notreached */
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_VERBOSE
+  fprintf(stderr, "mapped %p to %p\n", p, new_oop);
+#endif
+  return new_oop;
 }
 
 static void alloc_new_arena(void) {
@@ -437,6 +444,11 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
 	      active_heap.double_threshold);
 #endif
       active_heap.double_next_collection = 1;
+    } else {
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MAJOR
+      fprintf(stderr, "main heap has %lu bytes alloced\n",
+	      active_heap.alloced);
+#endif
     }
   }
 
@@ -517,86 +529,105 @@ oop intern(char const *str, size_t len) {
   }
 }
 
-oop scheme_display(oop x, oop p) {
+static void display_vector(FILE *f, oop x, int offset, char const *leader, char const *trailer) {
+  int i;
+  int want_space = 0;
+  fprintf(f, "%s", leader);
+  for (i = offset; i < oop_len(x); i++) {
+    if (want_space) fprintf(f, " ");
+    scheme_display(f, ((vector *) x)->data[i]);
+    want_space = 1;
+  }
+  fprintf(f, "%s", trailer);
+}
+
+void scheme_display(FILE *f, oop x) {
   switch (GETTAG(x)) {
     case TAG_INT:
-      printf("%ld", (long) DETAG(x));
+      fprintf(f, "%ld", (long) DETAG(x));
       break;
 
     case TAG_CHAR:
       if (iswprint(DETAG(x))) {
-	printf("#\\%c", (wchar_t) DETAG(x));
+	fprintf(f, "#\\%c", (wchar_t) DETAG(x));
       } else {
-	printf("#\\u%04X", (wchar_t) DETAG(x));
+	fprintf(f, "#\\u%04X", (wchar_t) DETAG(x));
       }
       break;
 
     case TAG_SPECIAL:
       switch (DETAG(x)) {
-	case 0: printf("()"); break;
-	case 1: printf("#<void>"); break;
-	case 2: printf("#t"); break;
-	case 3: printf("#f"); break;
-	default: printf("#<special %lu>", (unsigned long) DETAG(x)); break;
+	case SPECIAL_NULL: fprintf(f, "()"); break;
+	case SPECIAL_VOID: fprintf(f, "#<void>"); break;
+	case SPECIAL_TRUE: fprintf(f, "#t"); break;
+	case SPECIAL_FALSE: fprintf(f, "#f"); break;
+	case SPECIAL_EOF: fprintf(f, "#<eof>"); break;
+	default: fprintf(f, "#<special %lu>", (unsigned long) DETAG(x)); break;
       }
       break;
 
     case TAG_OOP:
       switch (oop_type(x)) {
 	case TYPE_CLOSURE:
-	  printf("#<closure %p %lu>", ((closure *) x)->code, oop_len(x));
+	  fprintf(f, "#<closure %p %lu>", ((closure *) x)->code, oop_len(x));
 	  break;
 	case TYPE_BOX:
-	  printf("#<box ");
-	  scheme_display(((box *) x)->value, p);
-	  printf(">");
+	  fprintf(f, "#<box ");
+	  scheme_display(f, ((box *) x)->value);
+	  fprintf(f, ">");
 	  break;
-	case TYPE_PAIR:
-	  printf("(");
-	  scheme_display(((pair *) x)->car, p);
-	  printf(" . ");
-	  scheme_display(((pair *) x)->cdr, p);
-	  printf(")");
+	case TYPE_PAIR: {
+	  oop p = x;
+	  int want_space = 0;
+	  fprintf(f, "(");
+	  while (ispair(p)) {
+	    if (want_space) fprintf(f, " ");
+	    scheme_display(f, ((pair *) p)->car);
+	    want_space = 1;
+	    p = ((pair *) p)->cdr;
+	  }
+	  if (!isnil(p)) {
+	    fprintf(f, " . ");
+	    scheme_display(f, p);
+	  }
+	  fprintf(f, ")");
 	  break;
+	}
 	case TYPE_FLOAT:
-	  printf("%g", ((floatholder *) x)->value);
+	  fprintf(f, "%g", ((floatholder *) x)->value);
 	  break;
 	case TYPE_BINARY:
-	  printf("%.*s",
+	  fprintf(f, "\"%.*s\"",
 		 (int) oop_len(x),
 		 ((binary *) x)->data);
 	  break;
 	case TYPE_SYMBOL:
-	  printf("%.*s",
+	  fprintf(f, "%.*s",
 		 (int) oop_len(symbol_name(x)),
 		 ((binary *) symbol_name(x))->data);
 	  break;
-	case TYPE_VECTOR: {
-	  int i;
-	  int want_space = 0;
-	  printf("#(");
-	  for (i = 0; i < oop_len(x); i++) {
-	    if (want_space) printf(" ");
-	    scheme_display(((vector *) x)->data[i], p);
-	    want_space = 1;
-	  }
-	  printf(")");
+	case TYPE_VECTOR:
+	  display_vector(f, x, 0, "#(", ")");
+	  break;
+	case TYPE_RECORD: {
+	  /* TODO: we hardcode some knowledge of how 9.scm implements records here */
+	  vector *rtd = ((vector *) x)->data[0];
+	  symbol *rtdname = rtd->data[1];
+	  binary *rtdnamestr = symbol_name(rtdname);
+	  fprintf(f, "#<record %.*s ", (int) oop_len(rtdnamestr), rtdnamestr->data);
+	  display_vector(f, x, 1, "", ">");
 	  break;
 	}
-	case TYPE_RECORD:
-	  printf("#<record>");
-	  break;
 	default:
-	  printf("#<unknown %p>", x);
+	  fprintf(f, "#<unknown %p>", x);
 	  break;
       }
       break;
 
     default:
-      printf("#<unknown_tag %p>", x);
+      fprintf(f, "#<unknown_tag %p>", x);
       break;
   }
-  return mkvoid();
 }
 
 extern oop scheme_newline(oop p) {
