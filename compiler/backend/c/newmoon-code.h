@@ -69,6 +69,7 @@ typedef struct {
 #define isoop(x)	(GETTAG(x) == 0 && (x) != NULL)
 
 #define isint(x)	(GETTAG(x) == TAG_INT)
+#define isspecial(x)	(GETTAG(x) == TAG_SPECIAL)
 
 #define MAKE_GC_INFO(type, length, flag) TAG(((length) << 8) | ((type) & 255), flag)
 

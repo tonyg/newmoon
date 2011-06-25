@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <wctype.h>
 
 #include "newmoon-code.h"
 
@@ -517,36 +518,83 @@ oop intern(char const *str, size_t len) {
 }
 
 oop scheme_display(oop x, oop p) {
-  if (isint(x)) {
-    printf("%ld", (long) DETAG(x));
-  } else if (isnil(x)) {
-    printf("()");
-  } else if (ispair(x)) {
-    printf("(");
-    scheme_display(((pair *) x)->car, p);
-    printf(" . ");
-    scheme_display(((pair *) x)->cdr, p);
-    printf(")");
-  } else if (issymbol(x)) {
-    printf("%.*s",
-	   (int) oop_len(symbol_name(x)),
-	   ((binary *) symbol_name(x))->data);
-  } else if (isbinary(x)) {
-    printf("%.*s", 
-	   (int) oop_len(x),
-	   ((binary *) x)->data);
-  } else if (isvector(x)) {
-    int i;
-    int want_space = 0;
-    printf("#(");
-    for (i = 0; i < oop_len(x); i++) {
-      if (want_space) printf(" ");
-      scheme_display(((vector *) x)->data[i], p);
-      want_space = 1;
-    }
-    printf(")");
-  } else {
-    printf("#<unknown>");
+  switch (GETTAG(x)) {
+    case TAG_INT:
+      printf("%ld", (long) DETAG(x));
+      break;
+
+    case TAG_CHAR:
+      if (iswprint(DETAG(x))) {
+	printf("#\\%c", (wchar_t) DETAG(x));
+      } else {
+	printf("#\\u%04X", (wchar_t) DETAG(x));
+      }
+      break;
+
+    case TAG_SPECIAL:
+      switch (DETAG(x)) {
+	case 0: printf("()"); break;
+	case 1: printf("#<void>"); break;
+	case 2: printf("#t"); break;
+	case 3: printf("#f"); break;
+	default: printf("#<special %lu>", (unsigned long) DETAG(x)); break;
+      }
+      break;
+
+    case TAG_OOP:
+      switch (oop_type(x)) {
+	case TYPE_CLOSURE:
+	  printf("#<closure %p %lu>", ((closure *) x)->code, oop_len(x));
+	  break;
+	case TYPE_BOX:
+	  printf("#<box ");
+	  scheme_display(((box *) x)->value, p);
+	  printf(">");
+	  break;
+	case TYPE_PAIR:
+	  printf("(");
+	  scheme_display(((pair *) x)->car, p);
+	  printf(" . ");
+	  scheme_display(((pair *) x)->cdr, p);
+	  printf(")");
+	  break;
+	case TYPE_FLOAT:
+	  printf("%g", ((floatholder *) x)->value);
+	  break;
+	case TYPE_BINARY:
+	  printf("%.*s",
+		 (int) oop_len(x),
+		 ((binary *) x)->data);
+	  break;
+	case TYPE_SYMBOL:
+	  printf("%.*s",
+		 (int) oop_len(symbol_name(x)),
+		 ((binary *) symbol_name(x))->data);
+	  break;
+	case TYPE_VECTOR: {
+	  int i;
+	  int want_space = 0;
+	  printf("#(");
+	  for (i = 0; i < oop_len(x); i++) {
+	    if (want_space) printf(" ");
+	    scheme_display(((vector *) x)->data[i], p);
+	    want_space = 1;
+	  }
+	  printf(")");
+	  break;
+	}
+	case TYPE_RECORD:
+	  printf("#<record>");
+	  break;
+	default:
+	  printf("#<unknown %p>", x);
+	  break;
+      }
+      break;
+
+    default:
+      printf("#<unknown_tag %p>", x);
+      break;
   }
   return mkvoid();
 }
