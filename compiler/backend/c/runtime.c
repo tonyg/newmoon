@@ -12,9 +12,14 @@
 
 #include "newmoon-code.h"
 
+#define NOISE_LEVEL_SILENT 0
+#define NOISE_LEVEL_MAJOR 1
+#define NOISE_LEVEL_MINOR 2
+#define NOISE_LEVEL_VERBOSE 3
+
 #define INITIAL_HEAP_SIZE (128 * 1024)
 #define INITIAL_NURSERY_SIZE (512 * 1024)
-#define GC_NOISE_LEVEL 0
+#define GC_NOISE_LEVEL NOISE_LEVEL_SILENT
 
 typedef struct rootvec {
   size_t length;
@@ -216,13 +221,11 @@ static box *raw_box(oop v) {
 }
 
 static void dump_heapstats(char const *heapname, heap *heap) {
-#if GC_NOISE_LEVEL > 0
   fprintf(stderr, "%s heap size %lu alloced %lu base %p\n",
 	  heapname,
 	  heap->size,
 	  heap->alloced,
 	  heap->base);
-#endif
 }
 
 static oop gc_copy(oop p); /* forward */
@@ -238,7 +241,7 @@ static oop gc_copy(oop p) {
   int flag;
   size_t len;
 
-#if GC_NOISE_LEVEL > 2
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_VERBOSE
   fprintf(stderr, "gc_copy(%p)\n", p);
 #endif
 
@@ -304,7 +307,7 @@ static void alloc_new_arena(void) {
 }
 
 static void dealloc_heap(heap *heap) {
-#if GC_NOISE_LEVEL > 0
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MAJOR
   fprintf(stderr, "dealloc_heap %p of size %lu\n",
 	  heap->base,
 	  heap->size);
@@ -325,15 +328,20 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
   heap old_heap; /* only initialized and used if switching_main_heaps != 0 */
 
   fflush(NULL);
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MINOR
   dump_heapstats("main", &active_heap);
+#endif
 
   switching_main_heaps = heap_needs_gc(&active_heap);
   if (switching_main_heaps) {
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MAJOR
+    fprintf(stderr, "switching main heaps\n");
+#endif
     old_heap = active_heap;
     alloc_new_arena();
   }
 
-#if GC_NOISE_LEVEL > 1
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MINOR
   fprintf(stderr, "gc_stack_collector IN  receiver %p with %d args\n", self, argc);
   fprintf(stderr, "bottom of stack %p, limit %p, top %p\n",
 	  &arglist, gc_nursery_limit, gc_nursery_base);
@@ -345,7 +353,7 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
     for (i = 0; i < barrier->count; i++) {
       vector *p = (vector *) barrier->saved[i];
       int flag = GETTAG(p->header.gc_info);
-#if GC_NOISE_LEVEL > 2
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_VERBOSE
       fprintf(stderr, "barrier %d %p flag %d count %ld type %ld\n",
 	      i, p, flag, oop_len(p), oop_type(p));
 #endif
@@ -404,7 +412,7 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
   self = gc_copy(self);
   arglist = gc_copy(arglist);
 
-#if GC_NOISE_LEVEL > 1
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MINOR
   fprintf(stderr, "gc_stack_collector OUT receiver %p with %d args\n", self, argc);
 #endif
 
@@ -412,7 +420,7 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
     dealloc_heap(&old_heap);
 
     if (active_heap.alloced > active_heap.double_threshold) {
-#if GC_NOISE_LEVEL > 0
+#if GC_NOISE_LEVEL >= NOISE_LEVEL_MAJOR
       fprintf(stderr, "main heap has %lu bytes alloced, which is above double threshold %lu\n",
 	      active_heap.alloced,
 	      active_heap.double_threshold);
