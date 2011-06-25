@@ -141,6 +141,8 @@ static void init_gc(void) {
   barrier->next_page = NULL;
 
   globals = mknull();
+
+  registerroots(1, &globals);
 }
 
 static inline int heap_needs_gc(heap *h) {
@@ -374,6 +376,28 @@ void __attribute__((noreturn)) gc_stack_collector(oop self, int argc, ...) {
 	*rptr = gc_copy(*rptr);
       }
       rv = rv->next;
+    }
+  }
+
+  if (switching_main_heaps) {
+    /* Copy the symbol table over. */
+    vector *oldtab = symtab;
+    int i;
+    init_symtab();
+    for (i = 0; i < INITIAL_SYMTAB_LEN; i++) {
+      pair *p = oldtab->data[i];
+      while (p != mknull()) {
+	symbol *sym = (symbol *) p->car;
+	int sym_flag = GETTAG(sym->header.gc_info);
+	assert(!is_in_heap(p, active_heap));
+	if (sym_flag == FLAG_FORWARDING) {
+	  /* It's a live symbol. */
+	  assert(is_in_heap(sym->header.gc_info, active_heap));
+	  sym = sym->header.gc_info;
+	  symtab->data[i] = raw_cons(sym, symtab->data[i]);
+	}
+	p = p->cdr;
+      }
     }
   }
 
