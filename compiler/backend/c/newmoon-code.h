@@ -312,14 +312,17 @@ extern oop symbol_name(oop s);
 extern oop vector_to_list(oop v);
 extern void scheme_display(FILE *f, oop x);
 extern oop load_module(char const *name);
+
+extern int newmoon_argc;
+extern char const **newmoon_argv;
 extern int newmoon_main(int argc,
-			char const *argv,
+			char const **argv,
 			void (*initGlobals)(void),
 			__attribute__((noreturn)) void (*startup)(oop,int,continuation));
-extern void registerroots(int root_count, ...);
 
 extern oop *gc_nursery_base;
 extern oop *gc_nursery_limit;
+extern void registerroots(int root_count, ...);
 extern void __attribute__((noreturn)) gc_stack_collector(oop receiver, int argc, ...);
 
 /*

@@ -53,6 +53,9 @@ static int symbol_count;
 
 static oop globals;
 
+int newmoon_argc;
+char const **newmoon_argv;
+
 #undef newmoontrace
 void newmoontrace(char const *assemblyname, char const *functionname) {
   fflush(NULL);
@@ -758,7 +761,7 @@ static __attribute__((noreturn)) void toplevel_k(constant_closure_env *self,
 }
 
 int newmoon_main(int argc,
-		 char const *argv,
+		 char const **argv,
 		 initGlobals_fn initGlobals,
 		 startup_fn startup)
 {
@@ -767,6 +770,9 @@ int newmoon_main(int argc,
 
   push_bootmod_def("(main)", initGlobals, startup);
   push_bootmod("basic-library");
+
+  newmoon_argc = argc;
+  newmoon_argv = argv;
 
   {
     struct bootmod *bm = bootmods;

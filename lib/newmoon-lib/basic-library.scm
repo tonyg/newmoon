@@ -880,6 +880,18 @@
   (%assemble (x) (x)
     (c "return(scheme_boolean(DETAG("x") > 0));")))
 
+(define (command-line-arguments)
+  (%assemble () ()
+    (c "oop result = mknull();"
+       "int i;"
+       "for (i = newmoon_argc - 1; i >= 0; i--) {"
+       "  pair *p = alloca(sizeof(pair));"
+       "  defbinary(a, strlen(newmoon_argv[i]), newmoon_argv[i]);"
+       "  *p = (pair) mkpair(a, result);"
+       "  result = p;"
+       "}"
+       "return(result);")))
+
 (defmacro trace (x)
   `(begin
      (display '|Tracing |)
